@@ -20,15 +20,15 @@ Wei Liu<sup>1,†</sup>, Tom N. McNeilly<sup>2,†,*</sup>, Mairi Mitchell<sup>2
 
 ## Supplementary data
 
-### multiqc_report_biopsy.html
+### [multiqc_report_biopsy.html](Supplementary%20Data/multiqc_report_biopsy.html)
 
 The quality control [MultiQC](https://multiqc.info) report of biopsy RNAseq samples based on the FASTQC data.
 
-### ipa_3V_6V.ods
+### [ipa_3V_6V.ods](Supplementary%20Data/ipa_3V_6V.ods)
 
 Ingenuity Pathway analysis (IPA) results for all the WGCNA clusters shown in Fig 2.
 
-### gene_cluster_masigpro.ods
+### [gene_cluster_masigpro.ods](Supplementary%20Data/gene_cluster_masigpro.ods)
 
 Differentially expressed gene list between the ageing groups. The expression levels are shown in Fig S5 C heatmap.
 
