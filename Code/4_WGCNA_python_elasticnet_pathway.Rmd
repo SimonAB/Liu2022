@@ -1,0 +1,814 @@
+---
+title: "Apodemus_pathway"
+author: "Wei Liu"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+setwd("~/Dropbox/sheep_arc/")
+rm(list=ls())
+library("ggplot2")
+library("DOSE")
+library("stringr")
+library("readxl")
+
+# pathway
+library("dplyr")
+library("reshape2")
+library("RColorBrewer")
+library("scales")
+
+# complex heatmap
+library("ComplexHeatmap")
+library("circlize")
+library("matrixStats")
+
+# Quantile normalisation
+library("preprocessCore")
+library("MASS")
+library("sfsmisc")
+library("cluster")
+options(stringsAsFactors = FALSE)
+
+# combining ggplot
+library("cowplot")
+library("lme4")
+library("dotwhisker")
+library("broom")
+
+
+```
+
+
+
+```{r}
+
+para_opt <- "FEC"  # FEC   SUP    NOSUP
+week_w <- "Week7"
+gene_cluster <- read.csv(paste0("WGCNA_DESEQ/DESeq_norm_genematrix_g1g3_",week_w,".csv"), header = T)
+
+```
+
+
+```{r}
+elas_net_full <- as.data.frame(read.csv(paste0("WGCNA_",para_opt,"/enet_coef_",para_opt,"_",week_w,".csv")))
+elas_net_r2 <- subset(elas_net_full, cluster!="r2"& cluster!="mse")
+```
+
+
+```{r, plot the elastic net coeffs}
+elas_net <- elas_net_r2[abs(elas_net_r2$coef.mean) !=0,]
+MtoH <-colorRampPalette(c('yellow' ,'firebrick2'))
+LtoM <-colorRampPalette(c('blue','chartreuse'))
+
+df <- as.data.frame(elas_net[,c("cluster", "coef.mean", "coef.sem")])
+ggplot(data=df,aes(x= reorder(cluster,coef.mean), y = coef.mean, fill=coef.mean))+
+  geom_bar(stat = 'identity',color="white") +
+  geom_errorbar(aes(ymin=coef.mean-coef.sem, ymax=coef.mean+coef.sem), width=0.05, position=position_dodge(.9), color="gray10")+
+  scale_fill_gradientn(colours = c("blue", "gray95", "red"),
+  values = scales::rescale( c( seq(min(df$coef.mean),0,len=10),0, seq(0, max(df$coef.mean),len=10)  )  ))+
+  labs(title=paste0(week_w), x="Pathways", y = "EN Coefficient")+
+  coord_flip()+
+  theme_minimal()
+ggsave(file=paste0("WGCNA_",para_opt,"/python_enet_1000genes_g1g3_",week_w,".pdf"), height = 6, width = 5)
+
+```
+
+
+```{r,ingenuity pathway }
+
+clusters_enet_coff <- substring(df$cluster,3)
+# delete files
+  if ( file.exists(paste0(path="WGCNA_",para_opt,"/",week_w,"/")) )  {
+  file.remove(list.files(paste0(path="WGCNA_",para_opt,"/",week_w,"/"), pattern="*.csv", full.names = T))   }
+
+for (i in 1:length(clusters_enet_coff)) {
+gene_subset_table <- subset(gene_cluster, clusters==clusters_enet_coff[i])$X
+sign <- as.character(df$coef.mean[i]>0)
+write.table(gene_subset_table,file=paste0("WGCNA_",para_opt,"/",week_w,"/",sign,"_gene_list_",clusters_enet_coff[i],".csv"), row.names = F, col.names=F, quote = F)
+}
+subset(gene_cluster, X=="WNT6")$clusters
+
+WEEKS <- c("Week1", "Week2", "Week3", "Week4", "Week5", "Week7")
+
+#for (i in 1) {
+
+  temp = list.files(paste0(path="WGCNA_",para_opt,"/",week_w,"/"), pattern="*.csv", full.names = T)
+  mycsv = lapply(temp, function(i){read.csv(i, header=F)} )
+  mycsv_table<-as.data.frame(unlist(mycsv))
+  print(nrow(mycsv_table))
+    write.table(mycsv_table,file=paste0("WGCNA_",para_opt,"/",week_w,"_full.csv"), row.names = F, col.names=F, quote = F)
+#}
+
+
+```
+
+```{r, merge FEC and WC with SUPER SHEEP}
+
+WEEKS <- c("Week1", "Week2", "Week3", "Week4", "Week5", "Week7")
+
+for (week_w in WEEKS) {
+    gene_table_enet_FEC <- read.csv(paste0("WGCNA_FEC/",week_w,"_full_FEC.csv"), header = F, sep = ";")
+    gene_table_enet_SUP <- read.csv(paste0("WGCNA_SUP/",week_w,"_full_SUP.csv"), header = F, sep = ";")
+    merge_gene_table <- unique(rbind(gene_table_enet_FEC, gene_table_enet_SUP))
+    print(nrow(merge_gene_table))
+    write.table(merge_gene_table, file=paste0("WGCNA_merge/",week_w,"_full_merge.csv"),row.names = F, col.names=F, quote = F)
+}
+
+```
+
+
+
+
+
+```{r, match the ingenuity immune pathway}
+
+para_opt <- "merge"  # FEC   SUP    NOSUP  merge merge_NOSUP
+
+imm_list <- read_excel("data/read_in/immune_pathway_list.xls",1)
+imm_list <- imm_list[,2:4]
+colnames(imm_list) <- imm_list[1,]
+imm_list <- unique(imm_list[-1,])
+
+WEEKS <- c("Week1", "Week2", "Week3", "Week4", "Week5", "Week7")
+
+for (week_w in WEEKS) {
+  pathway_week <- read_excel(paste0("WGCNA_",para_opt,"/ingenuity/",week_w,"_full_",para_opt,".xls"),1)
+pathway_week <- pathway_week[-1, c(1,2,5)]
+colnames(pathway_week) <- c("pathway", "log_p", "gene")
+pathway_index <- na.omit(match(imm_list$Name,pathway_week$pathway))
+
+pathway_week[pathway_week$pathway == "Role of Pattern Recognition Receptors in Recognition of Bacteria and Viruses",1] = "Role of PRRs in Bacteria and Virus Detection"
+
+pathway_week[pathway_week$pathway == "Role of Cytokines in Mediating Communication between Immune Cells",1] = "Cytokine-mediated Cell Communication"
+
+pathway_week[pathway_week$pathway == "Regulation of IL-2 Expression in Activated and Anergic T Lymphocytes",1] = "T Cell IL-2 Expression"
+
+pathway_week[pathway_week$pathway == "Production of Nitric Oxide and Reactive Oxygen Species in Macrophages",1] = "Macrophage NO and ROS Expression"
+
+pathway_week[pathway_week$pathway == "Fcγ Receptor-mediated Phagocytosis in Macrophages and Monocytes",1] = "Fcγ R-mediated phagocytosis"
+
+pathway_week[pathway_week$pathway == "Differential Regulation of Cytokine Production in Macrophages and T Helper Cells by IL-17A and IL-17F",1] = "IL-17 reg. of cytokine expression by T cells and macrophages"
+
+pathway_week[pathway_week$pathway == "Differential Regulation of Cytokine Production in Intestinal Epithelial Cells by IL-17A and IL-17F",1] = "IL-17 reg. of cytokine expression by intestinal epithelial cells"
+
+pathway_week[pathway_index,"pathway"] <- paste0("IMMUNE_",pathway_week[pathway_index,]$pathway)
+
+write.table(pathway_week, file=paste0("WGCNA_",para_opt,"/ingenuity/",week_w,"_full_",para_opt,"_IMMUNE_labelled.csv"), row.names = F, col.names = T,quote = F, sep=";")
+}
+
+
+```
+
+```{r, pathway heatmap}
+
+
+WEEKS <- c("Week1", "Week2", "Week3", "Week4", "Week5", "Week7")
+pathway_week_total <- NULL
+for (week_w in WEEKS) {
+  pathway_week <- read.csv(paste0("WGCNA_",para_opt,"/ingenuity//",week_w,"_full_",para_opt,"_IMMUNE_labelled.csv"), header = T, sep=";")
+  pathway_week <- pathway_week[,-3] # remove gene column
+  pathway_IMM <- pathway_week[grep("^IMMUNE",pathway_week$pathway),]
+  pathway_IMM_logp <- subset(pathway_IMM, log_p>=1.3)
+  pathway_IMM_logp$week <- week_w
+  pathway_week_total <-  rbind(pathway_week_total,pathway_IMM_logp)
+  }
+pathway_week_total$pathway <- substring(pathway_week_total$pathway,8)
+
+# shorten the pathway
+
+# pathway_week_total$log_p <- as.numeric(pathway_week_total$log_p)
+# pathway_week_total$pathway <- as.factor(pathway_week_total$pathway)
+# pathway_week_total$week<- as.factor(pathway_week_total$week)
+
+ipa_list <- split(pathway_week_total, f = pathway_week_total$week)
+
+comb0<- left_join(pathway_week_total, ipa_list[[6]], by = "pathway")
+comb1 <- left_join(comb0, ipa_list[[5]], by = "pathway")
+comb2 <- left_join(comb1, ipa_list[[4]], by = "pathway")
+comb3 <- left_join(comb2, ipa_list[[3]], by = "pathway")
+comb4 <- left_join(comb3, ipa_list[[2]], by = "pathway")
+comb5 <- left_join(comb4, ipa_list[[1]], by = "pathway")
+
+
+ipa_table_comb <- unique(comb5[,-c(2,seq(3,15, by=2))]) # remove week
+ipa_table_comb[,2:7] <- ipa_table_comb[,7:2]
+colnames(ipa_table_comb) <- c("pathway",names(ipa_list))
+ipa_table_comb[is.na(ipa_table_comb)] =0
+
+# table split into overlapped table and week1 only table
+# ipa_table_overlap <- subset(ipa_table_comb, rowSums(ipa_table_comb[,c(2,7)]) < rowSums(ipa_table_comb[,2:7]))
+# ipa_table_week1_7 <- subset(ipa_table_comb, rowSums(ipa_table_comb[,c(2,7)]) == rowSums(ipa_table_comb[,2:7]) )
+#ipa_table_overlap <- ipa_table_overlap[,c(1,2,7)]
+#ipa_table_overlap <- subset(ipa_table_comb, ipa_table_comb$Week1!=rowSums(ipa_table_comb[,2:7]))
+
+ipa_table_overlap <- ipa_table_comb
+
+ipa_table_overlap_correlation <- subset(ipa_table_overlap, rowSums(ipa_table_overlap[,c(2,3,5)])>0)
+
+
+# write.table(ipa_table_comb, file="~/Dropbox/sheep_arc/manuscript/pdf_figures/wei_pdf_figs/ipa_table_full.csv", row.names = F, col.names = T, quote = F, sep=";")
+
+#ord <- hclust( dist(ipa_table_overlap, method = "euclidean"), method = "ward.D" )$order
+ord <- order(ipa_table_comb[,2], ipa_table_comb[,3],ipa_table_comb[,4],ipa_table_comb[,5],ipa_table_comb[,6],ipa_table_comb[,7])
+longData <- melt(ipa_table_overlap, id = "pathway")
+colnames(longData) <- c("pathway", "week", "log_p")
+longData$log_p <- as.numeric(longData$log_p)
+longData$pathway<- factor( longData$pathway, levels = ipa_table_overlap$pathway[ord] )
+longData$week <- factor(longData$week)
+
+
+myPalette <- colorRampPalette(brewer.pal(9, "YlOrRd"))
+require(grid) # for unit()
+p=ggplot(longData,aes(x = week, y = pathway, fill = log_p))+
+  geom_tile(colour = "white", size=0.5)+
+  scale_fill_gradientn(colours = myPalette(100),name=expression("-log"[10]*"(P-value)"),limits = c(min(longData$log_p),10),oob=squish)+
+  coord_equal()+
+  theme(legend.position="top")+
+  theme(text = element_text(size=14), axis.text.y = element_text(size=18),
+        axis.text.x = element_text(angle = 45, vjust = 1, size = 16, hjust = 1),
+        axis.title.y = element_blank(), axis.title.x = element_blank(), panel.background = element_rect(fill = "white",colour = "white"),  panel.grid.major = element_line(size = 0.5, linetype = 'solid', colour = "black"), panel.grid.minor = element_line(size = 0.25, linetype = 'solid',colour = "black"))
+  ggsave(paste0("~/Dropbox/sheep_arc/manuscript/pdf_figures/wei_pdf_figs//heatmap_",para_opt,".pdf"),height =20, width = 15)
+
+```
+
+
+
+```{r, circular heatmap plot v2}
+
+ipa_table_comb$Week0 <- 0
+ipa_table_comb$Week01 <-0
+ipa_table_comb <- ipa_table_comb[,c("pathway","Week0","Week01","Week1", "Week2", "Week3", "Week4", "Week5", "Week7" )]
+ipa_table_comb[,2:9] <- t(scale(t(ipa_table_comb[,2:9])))
+ord <- hclust( dist(ipa_table_comb[,-1], method = "euclidean"), method = "ward.D" )$order
+ord <- c(ord[1:30], c(nrow(ipa_table_comb)+1,nrow(ipa_table_comb)+2,nrow(ipa_table_comb)+3), ord[31:length(ord)])
+
+add_ipa <- as.data.frame(t(c("NAN", 0,0,0,0,0,0,0,0)) )
+add_ipa[,2:9] <- as.numeric(add_ipa[,2:9])
+colnames(add_ipa) <- colnames(ipa_table_comb)
+ipa_table_comb <- rbind(ipa_table_comb,add_ipa,add_ipa,add_ipa)
+ipa_table_comb[ipa_table_comb$pathway=="NAN",]$pathway = c("N1", "N2", "N3")
+#write.table(ipa_table_comb, file = "paper_figs/ipa_table_comb.csv")
+
+
+longData <- melt(ipa_table_comb, id = "pathway")
+colnames(longData) <- c("pathway", "week", "log_p")
+longData$log_p <- as.numeric(longData$log_p)
+#ord <- order(ipa_table_comb[,"Week1"])
+longData$pathway<- factor( longData$pathway, levels = ipa_table_comb$pathway[ord] )
+#longData$pathway<- factor( longData$pathway)
+longData$week <- factor(longData$week)
+longData$var2 <- as.numeric(longData$week) + 15
+
+longData.labs <- subset(longData, week==levels(longData$week)[nlevels(longData$week)])
+longData.labs <- longData.labs[order(longData.labs$pathway),]
+longData.labs$ang <- seq(from=(360/nrow(longData.labs))/1.5, to=(1.5* (360/nrow(longData.labs)))-360, length.out=nrow(longData.labs))+85
+
+longData.labs$hjust <- 0
+longData.labs$hjust[which(longData.labs$ang < -90)] <- 1
+longData.labs$ang[which(longData.labs$ang < -90)] <- (180+longData.labs$ang)[which(longData.labs$ang < -90)]
+
+myPalette <- colorRampPalette(brewer.pal(9, "YlOrRd"))
+
+
+cairo_pdf(paste0("~/Dropbox/sheep_arc/manuscript/pdf_figures/wei_pdf_figs/cicular_text_",para_opt,".pdf"), height = 10, width =10)
+ggplot(longData, aes(x=pathway, y=var2, fill=log_p) )+
+ geom_tile(colour="white", size=0.3) +
+ geom_text(data=longData.labs, aes(x=pathway, y=var2-5.6,label=pathway, angle=ang,hjust=hjust), size=1.2) + #y-6
+  scale_fill_gradientn(colours = "white",name=expression("-log"[10]*"(P-value) (scaled)"),limits = c(min(longData$log_p),max(longData$log_p)),oob=squish)+ #myPalette(100)
+  coord_polar(theta="x") +
+    theme_void()+
+    theme(legend.position = "top")
+dev.off()
+#ggsave(p, file="~/Dropbox/sheep_arc/manuscript/pdf_figures/wei_pdf_figs//cicular_plot.pdf", height = 8, width =8)
+
+```
+
+
+```{r, gene dynamic patterns and complex heatmap with error bar}
+
+load("data/res/DESeq2_norm.RData")
+para_opt <- "merge"
+PARAsite <- "worm_AUC" #AUC   "worm_AUC"
+
+
+if (PARAsite == "worm") {
+    cor_pathway <- read.table("WGCNA_merge/cor_vax_worm.csv")
+} else if  (PARAsite == "AUC") {
+    cor_pathway <- read.table("WGCNA_merge/cor_vax_AUC.csv")
+} else if (PARAsite == "worm_AUC") {
+    cor_pathway <- unique(rbind(read.table("WGCNA_merge/cor_vax_worm.csv"), read.table("WGCNA_merge/cor_vax_AUC.csv")))
+}
+
+
+ipa_table_overlap <- ipa_table_overlap_correlation[match(cor_pathway[,1], ipa_table_overlap_correlation$pathway),]
+
+pathway_mean <- matrix(0, nrow(ipa_table_overlap), 12)
+for (pw_i in 1:nrow(ipa_table_overlap)) {
+  sel_pathway <-  ipa_table_overlap[pw_i,]
+  sel_week <- colnames(sel_pathway[,sel_pathway[,] != 0])[-1]
+    sel_gene_list <- vector()
+    for (week_w in sel_week) {
+      pathway_week <- read.csv(paste0("WGCNA_",para_opt,"/ingenuity/",week_w,"_full_",para_opt,"_IMMUNE_labelled.csv"), header = T, sep=";")
+    pathway_subset <- subset(pathway_week, pathway == paste0("IMMUNE_",sel_pathway$pathway) & log_p >=1.3)
+    sel_gene_list <- c(sel_gene_list, unlist(strsplit(pathway_subset$gene, ",")) )
+    }
+  sel_gene_list <- unique(sel_gene_list)
+  sel_gene_deseq <- na.omit(DESeq2_norm[match(sel_gene_list, rownames(DESeq2_norm)),])
+
+  sel_gene_mean <- matrix(NA,nrow(sel_gene_deseq),1)  # 6 weeks adn 4 groups
+  for (g_i in 1:4) {
+    for (w_i in c(1,2,4)) {
+      gene_rowmean <- as.data.frame(rowMeans(sel_gene_deseq[,substring(colnames(sel_gene_deseq),5) == paste0("g",g_i,"w",w_i)]))
+      colnames(gene_rowmean)<- paste0("g",g_i,"w",w_i)
+      sel_gene_mean = cbind(sel_gene_mean, gene_rowmean)
+      }
+  }
+  sel_gene_mean <- sel_gene_mean[,-1]
+  sel_gene_scale = t(normalize.quantiles(t(as.matrix(sel_gene_mean))))
+  rownames(sel_gene_scale) <- rownames(sel_gene_mean)
+  colnames(sel_gene_scale) <- colnames(sel_gene_mean)
+
+
+  #sel_gene_scale <- log2(sel_gene_scale+0.00001)
+
+
+   sel_gene_scale_median <- colMedians(as.matrix(sel_gene_scale))
+   pathway_mean[pw_i,] <- sel_gene_scale_median
+   sel_gene_scale_sd <- colSds(as.matrix(sel_gene_scale))
+
+    gene_df <- as.data.frame(sel_gene_scale_median)
+    rownames(gene_df) <- colnames(sel_gene_scale)
+    colnames(gene_df) <- "gene"
+    gene_df$sd <- sel_gene_scale_sd
+    gene_df$group <- as.factor(substring(rownames(gene_df),1,2))
+    gene_df$week <- as.factor(substring(rownames(gene_df),3,4))
+    gene_df$treatment <- "vax"
+    gene_df[gene_df$group=="g2"|gene_df$group=="g4",]$treatment <- "control"
+    gene_df[gene_df$group=="g2"|gene_df$group=="g4",]$sd <- NA
+    gene_df$treatment <- relevel(as.factor(gene_df$treatment), ref="vax")
+}
+
+
+# Pathway gene expression heatmap
+colnames(pathway_mean) <- colnames(sel_gene_scale)
+rownames(pathway_mean) <- ipa_table_overlap$pathway
+pathway_mean_scale <- t(scale(t(pathway_mean)))
+
+Kpool = 2:10
+     dis <- dist(pathway_mean_scale)
+     km_cand <- lapply(Kpool, function(ii) kmeans(pathway_mean_scale, ii, nstart = 100)$cluster )
+     km_silhouette_res <- sapply(1:length(Kpool),
+                              function(ii)
+                                summary( silhouette(km_cand[[ii]] ,
+                                                    dis) )$avg.width )
+     km_idx <- which.max( km_silhouette_res )
+     split <- km_cand[[km_idx]]
+     plot(silhouette(km_cand[[km_idx]] ,dis))
+
+   myPalette <- colorRampPalette(brewer.pal(9, "YlGnBu"))
+  cairo_pdf(file = paste0("manuscript/figures/wei_pdf_figs/temporal_heatmap_",PARAsite,".pdf"), height = 8, width = 12)
+      Heatmap(pathway_mean_scale,  name = "", cluster_columns = F, split = split,
+               col = myPalette(100), row_names_max_width = unit(18,"cm"),
+                         show_column_names = T,
+                         show_row_names = T,
+                        show_row_dend = FALSE,
+                       heatmap_legend_param = list(legend_direction = "horizontal",legend_width = unit(5, "cm")))
+      #, col = colorRamp2(c( min(sel_gene_scale), max(sel_gene_scale)), c("white", "red")) )
+  dev.off()
+
+
+
+```
+
+
+```{r, gene dynamic patterns with individual sheep points}
+load("data/res/DESeq2_norm.RData")
+para_opt <- "merge"
+PARAsite <- "worm_AUC" #AUC   "worm_AUC"
+
+
+if (PARAsite == "worm") {
+    cor_pathway <- read.table("WGCNA_merge/cor_vax_worm.csv")
+} else if  (PARAsite == "AUC") {
+    cor_pathway <- read.table("WGCNA_merge/cor_vax_AUC.csv")
+} else if (PARAsite == "worm_AUC") {
+    cor_pathway <- unique(rbind(read.table("WGCNA_merge/cor_vax_worm.csv"), read.table("WGCNA_merge/cor_vax_AUC.csv")))
+}
+
+
+ipa_table_overlap <- ipa_table_overlap_correlation[match(cor_pathway[,1], ipa_table_overlap_correlation$pathway),]
+pathway_mean <- matrix(0, nrow(ipa_table_overlap), 24)
+plot_list <- list()
+glm_list <- list()
+aov_list <- list()
+lmer_list <- list()
+lmer_list_res <- list()
+
+for (pw_i in 1:nrow(ipa_table_overlap)) {
+  sel_pathway <-  ipa_table_overlap[pw_i,]
+  sel_week <- colnames(sel_pathway[,sel_pathway[,] != 0])[-1]
+
+  sel_gene_list <- vector()
+    for (week_w in sel_week) {
+      pathway_week <- read.csv(paste0("WGCNA_",para_opt,"/ingenuity/",week_w,"_full_",para_opt,"_IMMUNE_labelled.csv"), header = T, sep=";")
+    pathway_subset <- subset(pathway_week, pathway == paste0("IMMUNE_",sel_pathway$pathway) & log_p >=1.3)
+    sel_gene_list <- c(sel_gene_list, unlist(strsplit(pathway_subset$gene, ",")) )
+    }
+  sel_gene_list <- unique(sel_gene_list)
+  sel_gene_deseq <- na.omit(DESeq2_norm[match(sel_gene_list, rownames(DESeq2_norm)),])
+  sel_gene_scale = t(normalize.quantiles(t(as.matrix(sel_gene_deseq))))
+  rownames(sel_gene_scale) <- rownames(sel_gene_deseq)
+  colnames(sel_gene_scale) <- colnames(sel_gene_deseq)
+  sel_gene_scale_median <- as.data.frame(colMedians(as.matrix(sel_gene_scale)))
+  rownames(sel_gene_scale_median) <- colnames(sel_gene_scale)
+  colnames(sel_gene_scale_median) <- "gene"
+   sel_gene_scale_median$group <- substring(rownames(sel_gene_scale_median), 5,6)
+   sel_gene_scale_median$week <- substring(rownames(sel_gene_scale_median), 7,8)
+   sel_gene_scale_median$median <- 0
+
+  ####pathway heatmap
+   k=0
+  for (g_i in 1:4) {
+    for (w_i in c(1:5,7)) {
+     gene_mean <- median(subset(sel_gene_scale_median, sel_gene_scale_median$group==paste0("g",g_i) & sel_gene_scale_median$week==paste0("w",w_i)  )$gene)
+     sel_gene_scale_median[sel_gene_scale_median$group ==paste0("g",g_i) & sel_gene_scale_median$week==paste0("w",w_i),]$median <- gene_mean
+     k=k+1
+     pathway_mean[pw_i,k] <- gene_mean
+      }
+  }
+   #sel_gene_scale_sd <- colSds(as.matrix(sel_gene_scale))
+
+    gene_df <- sel_gene_scale_median
+
+      # GLM
+    gene_reg_df <- gene_df
+    gene_reg_df$vaccine <- "vax"
+    gene_reg_df[gene_reg_df$group=="g2"|gene_reg_df$group=="g4",]$vaccine <- "control"
+    gene_reg_df$age <- "3mo"
+    gene_reg_df[gene_reg_df$group=="g3"|gene_reg_df$group=="g4",]$age <- "6mo"
+
+    gene_reg_df <- subset(gene_reg_df,week=="w1"|week=="w2"|week=="w4")
+    fit <- glm(gene ~ week + age + vaccine + age:vaccine, data = gene_reg_df, family = gaussian())
+    glm_list[[pw_i]] <- summary(fit)
+
+    fit_aov <- aov(gene ~ age + vaccine + age:vaccine +week, data=gene_reg_df)
+    aov_list[[pw_i]] <- summary(fit_aov)
+
+    fit_lmer <- lmer(gene ~ age + vaccine + age:vaccine+ (1 | week), data=gene_reg_df)
+    lmer_list_res[[pw_i]] <- fit_lmer
+    lmer_list_matrix <- as.data.frame(summary(fit_lmer)$coefficients)[-1,]
+    lmer_list [[pw_i]]<- cbind(lmer_list_matrix, ipa_table_overlap$pathway[pw_i], rownames(lmer_list_matrix))
+    #
+    #gene_df$sd <- sel_gene_scale_sd
+    gene_df$treatment <- "vax"
+    gene_df[gene_df$group=="g2"|gene_df$group=="g4",]$treatment <- "control"
+    gene_df[gene_df$group=="g2"|gene_df$group=="g4",]$gene <- NA
+    gene_df$treatment <- relevel(as.factor(gene_df$treatment), ref="vax")
+
+    plot_list[[pw_i]] <-  ggplot(gene_df, aes(x = week, y = gene))+
+      geom_line(aes(x = week, y = median, color = group, group=group, linetype = treatment), size=1)+
+      geom_point(aes(color = group), size=0.5) +
+      #geom_errorbar(aes(ymin=gene-sd, ymax=gene+sd, color = group), width=.2,
+                 #position=position_dodge(0.05), size=0.2 )+
+      #theme(legend.position = "none")+
+      scale_color_manual(values = c("orangered3","lightpink1","royalblue3","skyblue1"))+
+      scale_x_discrete(name = "Days",
+                       labels=c("0", "7", "14", "21", "28", "42"))+
+      ylab("Scaled Gene Expr")+
+      ggtitle(sel_pathway$pathway) +
+      theme_bw()+
+      theme(legend.position = "none",
+            plot.title = element_text(size = 14),
+            axis.title.y = element_text(size=12),
+            axis.text.x = element_text(size=14),
+            axis.title.x = element_text(size=14))
+
+
+###### Pathway gene expression heatmap
+
+
+
+colnames(pathway_mean) <- sort(unique(substring(rownames(sel_gene_scale_median),5)))
+rownames(pathway_mean) <- ipa_table_overlap$pathway
+pathway_mean_scale <- t(scale(t(pathway_mean)))
+
+pathway_mean_scale <- pathway_mean_scale[, substr(colnames(pathway_mean_scale),3,4) == "w1"|substr(colnames(pathway_mean_scale),3,4) == "w2"|substr(colnames(pathway_mean_scale),3,4) == "w4"]
+
+est_index <- matrix(NA, length(lmer_list),3)
+      for (i in 1: length(lmer_list)) {
+      lmer_df = as.data.frame(lmer_list[[i]])   # do.call(rbind, aov_list[[i]])
+       est_index[i,1] <- lmer_df$`t value`[1]
+       est_index[i,2] <- lmer_df$`t value`[2]
+       est_index[i,3] <- lmer_df$`t value`[3]
+       }
+      rownames(est_index) <- ipa_table_overlap$pathway
+    colnames(est_index) <- c("age_6mo", "vaccine_vax" ,"age_6mo:vaccine_vax")
+
+    Kpool = 4
+     dis <- dist(est_index)
+     km_cand <- lapply(Kpool, function(ii) kmeans(est_index, ii, nstart = 100)$cluster )
+     km_silhouette_res <- sapply(1:length(Kpool),
+                              function(ii)
+                                summary( silhouette(km_cand[[ii]] ,
+                                                    dis) )$avg.width )
+     km_idx <- which.max( km_silhouette_res )
+     plot(silhouette(km_cand[[km_idx]] ,dis))
+
+     split <- factor(km_cand[[km_idx]], levels=c("4","1","3","2"))
+
+  cairo_pdf(file = paste0("manuscript/figures/wei_pdf_figs/temporal_heatmap_",PARAsite,".pdf"), height = 8, width = 8)
+     myPalette1 <- colorRampPalette(brewer.pal(9,"YlGn"))
+     mycolor2 <-colorRampPalette(c("white", "steelblue3"))
+     col_order <- as.factor(rep(c("A","B","C", "D"), each=3))
+      ht1 <- Heatmap(pathway_mean_scale,cluster_columns = F, cluster_rows=F,
+                    split=split,
+                    column_split = col_order,
+                    col = mycolor2(100),
+                    show_column_names = T,
+                    show_row_names = F,
+                    show_row_dend = FALSE,
+                    heatmap_legend_param = list(legend_direction = "horizontal",legend_width = unit(5, "cm")))
+     mycolor1 <-colorRampPalette(c("mediumorchid2","black","yellow1"))
+      ht2 <- Heatmap(est_index, cluster_columns = F,show_row_names = T, split = split,
+                     col = mycolor1(100),
+                      #rect_gp = gpar(col = "grey", lty = 1, lwd = 1),
+                     show_row_dend = FALSE,
+                     row_names_max_width = unit(18,"cm"), row_names_gp = gpar(fontsize = 8) )
+      draw(ht1+ht2, heatmap_legend_side = "bottom" )
+       dev.off()
+
+```
+
+
+```{r, correlation with worm count}
+para_opt <- "merge"
+corr_opt <- "corr"
+PARAsite ="AUC" # AUC or worm
+
+load("data/res/DESeq2_norm.RData")
+
+ipa_table_overlap <- ipa_table_overlap_correlation
+
+cor_mat_imm <- matrix(0, nrow(ipa_table_overlap),12)
+pvalue_mat_imm <- matrix(0, nrow(ipa_table_overlap),12)
+residual <- matrix(0, nrow(ipa_table_overlap),12)
+
+for (pw_i in 1:nrow(ipa_table_overlap)) {
+  sel_pathway <-  ipa_table_overlap[pw_i,1:7]
+
+  sel_week <- colnames(sel_pathway[,sel_pathway[,] != 0])[-1]
+  sel_gene_list <- vector()
+    for (week_w in sel_week) {
+    pathway_week <- read.csv(paste0("WGCNA_",para_opt,"/ingenuity//",week_w,"_full_",para_opt,"_IMMUNE_labelled.csv"), header = T, sep=";")
+    pathway_subset <- subset(pathway_week, pathway == paste0("IMMUNE_",sel_pathway$pathway) & log_p >=1.3)
+    sel_gene_list <- c(sel_gene_list, unlist(strsplit(pathway_subset$gene, ",")) )
+    }
+  sel_gene_list <- unique(sel_gene_list)
+  sel_gene_deseq <- na.omit(DESeq2_norm[match(sel_gene_list, rownames(DESeq2_norm)),])
+  sel_gene_scale <- sel_gene_deseq
+  #sel_gene_scale = t(normalize.quantiles(t(as.matrix(sel_gene_deseq))))
+  rownames(sel_gene_scale) <- rownames(sel_gene_deseq)
+  colnames(sel_gene_scale) <- colnames(sel_gene_deseq)
+  sel_gene_scale_median <- as.data.frame(colMedians(as.matrix(sel_gene_scale)))
+  rownames(sel_gene_scale_median) <- colnames(sel_gene_scale)
+  colnames(sel_gene_scale_median) <- "gene"
+   sel_gene_scale_median$group <- substring(rownames(sel_gene_scale_median), 5,6)
+   sel_gene_scale_median$week <- substring(rownames(sel_gene_scale_median), 7,8)
+   sel_gene_scale_median$median <- 0
+
+   ### correlation with worm and FEC
+   # correlation with worm
+   if (PARAsite == "worm") {
+     worm <- read.csv("data/res/datTraits_worm.csv", header = T)[,-1]
+    worm_biopsy <- worm[grep("Biopsy",worm$Treatment),]
+    worm_match<- worm_biopsy[match(substring(rownames(sel_gene_scale_median),1,4),worm_biopsy$Animal.ID),]
+    identical(as.character(worm_match$Animal.ID),substring(rownames(sel_gene_scale_median),1,4))
+    sel_gene_scale_median$parasite <- log2(worm_match$Total.Worms+1)
+    sel_gene_scale_median$treat <- worm_match$Treatment
+    # remove super sheep
+    #sel_gene_scale_median <- subset(sel_gene_scale_median, parasite !=0)
+   } else if(PARAsite == "AUC") {
+    # correlation with AUC
+    AUC <- read.csv("data/res/datTraits_AUC.csv", header = T)[,-1]
+    AUC_biopsy <- AUC[grep("Biopsy",AUC$Treatment),]
+    AUC_match<- AUC_biopsy[match(substring(rownames(sel_gene_scale_median),1,4),AUC_biopsy$Animal.ID),]
+    identical(as.character(AUC_match$Animal.ID),substring(rownames(sel_gene_scale_median),1,4))
+    sel_gene_scale_median$parasite <- log2(AUC_match$AUCDay95+1)
+    sel_gene_scale_median$treat <- AUC_match$Treatment
+   }
+
+
+    WEEKS <- c("w1", "w2", "w3", "w4", "w5", "w7")
+    for (week_i in 1:6) {
+    scatter_sub <- subset(sel_gene_scale_median, week == WEEKS[week_i])
+
+    sca_sub <- subset(scatter_sub, treat == "Immunised Biopsy" )
+    # correlation
+    cor_mat_imm[pw_i, 2*week_i-1] <- cor.test(sca_sub$gene, sca_sub$parasite, alternative = "two.sided")[[4]]
+    pvalue_mat_imm[pw_i, 2*week_i-1] <- cor.test(sca_sub$gene, sca_sub$parasite, alternative = "two.sided")[[3]]
+
+    sca_sub <- subset(scatter_sub, treat == "Control Biopsy" )
+    cor_mat_imm[pw_i, 2*week_i] <- cor.test(sca_sub$gene, sca_sub$parasite, alternative = "two.sided")[[4]]
+     pvalue_mat_imm[pw_i, 2*week_i] <- cor.test(sca_sub$gene, sca_sub$parasite, alternative = "two.sided")[[3]]
+    }
+}
+
+
+cor_mat_imm_worm <- cor_mat_imm
+pvalue_mat_imm_worm <- pvalue_mat_imm
+
+######## WORM
+      cor_mat_imm_worm <- as.data.frame(cor_mat_imm_worm)
+      colnames(cor_mat_imm_worm) <- c("D0_Vax", "D0_Ctrl", "D7_Vax", "D7_Ctrl", "D14_Vax", "D14_Ctrl", "D21_Vax", "D21_Ctrl", "D28_Vax", "D28_Ctrl", "D42_Vax", "D42_Ctrl" )
+      rownames(cor_mat_imm_worm) <- ipa_table_overlap$pathway
+            pvalue_mat_imm_worm <- as.data.frame(pvalue_mat_imm_worm)
+      colnames(pvalue_mat_imm_worm) <- c("D0_Vax", "D0_Ctrl", "D7_Vax", "D7_Ctrl", "D14_Vax", "D14_Ctrl", "D21_Vax", "D21_Ctrl", "D28_Vax", "D28_Ctrl", "D42_Vax", "D42_Ctrl" )
+      rownames(pvalue_mat_imm_worm) <- ipa_table_overlap$pathway
+
+       cor_worm <- cor_mat_imm_worm[,c("D0_Vax", "D0_Ctrl","D7_Vax","D7_Ctrl","D21_Vax","D21_Ctrl")]
+      pvalue_worm_day0 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D0_Vax"])[1:10],]
+      pvalue_worm_day7 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D7_Vax"])[1:10],]
+     #pvalue_worm_day14 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D14_Vax"])[1:10],]
+      pvalue_worm_day21 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D21_Vax"])[1:10],]
+     # pvalue_worm_day28 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D28_Vax"])[1:10],]
+     # pvalue_worm_day42 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D42_Vax"])[1:10],]
+
+      pvalue_worm_select <- unique(rbind(pvalue_worm_day0, pvalue_worm_day7, pvalue_worm_day21))
+      cor_worm_vax <- cor_mat_imm_worm[rownames(pvalue_worm_select),c("D0_Vax", "D7_Vax","D21_Vax")]
+      cor_worm_ctrl <- cor_mat_imm_worm[rownames(pvalue_worm_select),c("D0_Ctrl", "D7_Ctrl","D21_Ctrl")]
+
+     set.seed(2019)
+
+
+     Kpool = 2:10
+     dis <- dist(cor_worm_vax)
+
+     km_cand <- lapply(Kpool, function(ii) kmeans(cor_worm_vax, ii, nstart = 100)$cluster )
+     km_silhouette_res <- sapply(1:length(Kpool),
+                              function(ii)
+                                summary( silhouette(km_cand[[ii]] ,
+                                                    dis) )$avg.width )
+     km_idx <- which.max( km_silhouette_res )
+     plot(silhouette(km_cand[[km_idx]] ,dis))
+
+     if (PARAsite == "worm") {
+            split <- factor(paste0("",km_cand[[km_idx]]),levels=c("4","1","2","3", "5"))
+     } else if(PARAsite == "AUC") {
+            split <- factor(paste0("",km_cand[[km_idx]]),levels=c("5","7","6","1","2","3","4"))
+
+     }
+
+      ht_vax <- Heatmap(cor_worm_vax,  name = "", cluster_columns =F, cluster_rows = T, split= split,
+                col = colorRamp2(c(min(cor_worm_vax, cor_worm_ctrl), 0, max(cor_worm_vax, cor_worm_ctrl)),
+                 #col = colorRamp2(c(-50, 0, 50),
+                 c("firebrick2", "white", "deepskyblue2")), row_names_max_width = unit(18,"cm"),
+                         #bottom_annotation = ha_rot_cn,
+                         #bottom_annotation_height = unit(2, "cm"),
+                         show_column_names = T,
+                         show_row_names = F,
+                        show_row_dend = T,
+                       heatmap_legend_param = list(legend_direction = "horizontal",legend_width = unit(5, "cm")),
+                         cell_fun = function(j, i, x, y, width, height, fill)
+                             {grid.text(sprintf("%.1f", cor_worm_vax[i, j]), x, y, gp = gpar(fontsize = 6))})
+
+
+     draw(ht_vax, heatmap_legend_side = "top")
+
+      ht_ctrl <- Heatmap(cor_worm_ctrl,  name = "", cluster_columns =F, cluster_rows = F, split=split,
+            col = colorRamp2(c(min(cor_worm_vax, cor_worm_ctrl), 0,  max(cor_worm_vax, cor_worm_ctrl) ),
+             #col = colorRamp2(c(-50, 0, 50),
+             c("firebrick2", "white", "deepskyblue2")), row_names_max_width = unit(18,"cm"),  show_row_names = T, row_names_gp = gpar(fontsize = 10),
+            cell_fun = function(j, i, x, y, width, height, fill) {grid.text(sprintf("%.1f", cor_worm_ctrl[i, j]), x, y, gp = gpar(fontsize = 6))}  )
+
+      cairo_pdf(paste0("~/Dropbox/sheep_arc/manuscript/pdf_figures/wei_pdf_figs/enet_",para_opt,"_",corr_opt,"_",PARAsite,".pdf"), width = 8, height = 8)
+     draw(ht_vax + ht_ctrl, heatmap_legend_side = "top")
+     dev.off()
+
+write.table(rownames(cor_worm_vax), file=paste0("WGCNA_",para_opt,"/cor_vax_",PARAsite,".csv"), row.names = F, col.names = F)
+
+
+
+
+```
+
+
+
+
+```{r}
+#   Single gene expression
+# for (i in 1:nrow(sel_gene_scale)) {
+#   gene_df <- as.data.frame(t(sel_gene_scale[i,]))
+#   colnames(gene_df) <- "gene"
+#   gene_df$group <- as.factor(substring(rownames(gene_df),1,2))
+#   gene_df$week <- as.factor(substring(rownames(gene_df),3,4))
+#   gene_df$treatment <- "vax"
+#   gene_df[gene_df$group=="g2"|gene_df$group=="g4",]$treatment <- "control"
+#   gene_df$treatment <- relevel(as.factor(gene_df$treatment), ref="vax")
+#
+#   p <- ggplot(gene_df, aes(x = week, y = gene))+
+#     geom_line(aes(x = week, y = gene, group=group, color = group, linetype = treatment), size=1)+
+#     geom_point(aes(color = group)) +
+#     theme(legend.position = "top")+
+#     scale_size_manual(values = c(10,1,3,1))+
+#     scale_color_manual(values = c("orangered3","lightpink1","royalblue3","skyblue1"))+
+#     scale_x_discrete(breaks=as.character(1:6), name = "Time",
+#                      labels=c("W1", "W2", "W3", "W4", "W5", "W7"))+
+#     ylab("Averaged Log2 Gene Expression")+
+#     theme_bw()
+#   ggsave(p, file=paste0("WGCNA/python_elasticnet/week1_7_1000genes/gene_temporal_pattern/pathway_single_gene/",rownames(sel_gene_scale)[i],".png"), width=6, height=4)
+#   }
+
+```
+
+```{r fig1, fig.height = 5, fig.width = 13}
+spec <- "hsa"
+corre <- "up"
+
+gene_table <- read.csv(paste0("gene_table_",spec,".csv"), header = T)
+colnames(gene_table) <- c("id", "mmu")
+gene_id <- match(gene_cluster$clusters,substring(elas_net$cluster,3))
+match_table <- as.data.frame(na.omit(gene_cluster[which(!is.na(gene_id)),]))
+res_table <- as.data.frame(cbind(rownames(match_table), match_table$clusters))
+colnames(res_table) <- c("gene","cl_id")
+res_coef.mean <- elas_net[match(res_table$cl_id, substring(elas_net$cluster,3)), "coef.mean"]
+
+table_mmu_id <- cbind(gene_table[match(res_table$gene, gene_table$id),], res_table$cl_id, res_coef.mean)
+  table_mmu_id <- na.omit(table_mmu_id)
+  table_mmu_id$mmu <- substring(table_mmu_id$mmu,5)
+
+table_mmu_up <- subset(table_mmu_id, res_coef.mean>0)
+table_mmu_down <- subset(table_mmu_id, res_coef.mean<0)
+
+if (corre == "up") {
+  table_split <- split(table_mmu_up , f =table_mmu_up$`res_table$cl_id`)
+} else if (corre == "down") {
+    table_split <- split(table_mmu_down , f =table_mmu_down$`res_table$cl_id`)
+}
+
+
+mmu_cluster <- lapply(table_split, function(x) x[,2])
+
+ck <- compareCluster(geneCluster = mmu_cluster,
+                     fun = "enrichKEGG",
+                     organism=paste0(spec),  pvalueCutoff=0.05)
+pdf(paste0("~/Dropbox/Apodemus_transcriptome/analysis/pathway_plot/coef.mean_larger0/kegg_pathway_coef_larger0_",spec,"_",corre,".pdf"),width=20,height=6)
+dotplot(ck, colorBy = "p.adjust", showCategory = 20, by = "geneRatio",
+        includeAll = TRUE, font.size = 12)
+dev.off()
+# save gene list
+kegg_result <- ck@compareClusterResult
+kegg_list <- strsplit(kegg_result$geneID, "/")
+geneID_mat <- as.data.frame(str_split_fixed(kegg_result$geneID, "/",max(lengths(kegg_list))))
+gene_name_mat <- NULL
+for (i in 1:max(lengths(kegg_list))) {
+  Gene_Name <- table_mmu_id[match(geneID_mat[,i], table_mmu_id$mmu),"id"]
+  gene_name_mat <- cbind(Gene_Name,gene_name_mat)
+}
+kegg_result <- cbind(kegg_result, gene_name_mat)
+write.csv(kegg_result,file=paste0("~/Dropbox/Apodemus_transcriptome/analysis/pathway_plot/coef.mean_larger0/KEGG_gene_coef_larger0_",spec,"_",corre,".csv"), row.names = F, col.names = T)
+
+```
+
+```{r fig2, fig.height = 5, fig.width = 13, echo=F}
+
+library("org.Hs.eg.db")
+tx2gene_full <- read.xlsx("Apodemus_short.xlsx",1)
+tx_gene <- cbind.data.frame(tx2gene_full[,2],
+                           unlist(lapply(strsplit(as.character(tx2gene_full$sprot_Top_BLASTX_hit),"_"),"[",1)))
+colnames(tx_gene) <- c("tx_id","gene_name" )
+tx2gene <- as.data.frame(unique(na.omit(tx_gene[,-1])))
+colnames(tx2gene) <- "gene"
+gene_table<- bitr(tx2gene$gene, fromType = "SYMBOL",
+                  toType = c("SYMBOL", "ENTREZID"),
+                  OrgDb = org.Hs.eg.db)
+
+gene_id <- match(gene_cluster$clusters,substring(elas_net$cluster,3))
+match_table <- as.data.frame(na.omit(gene_cluster[which(!is.na(gene_id)),]))
+res_table <- as.data.frame(cbind(rownames(match_table), match_table$clusters))
+colnames(res_table) <- c("gene","cl_id")
+res_coef.mean <- elas_net[match(res_table$cl_id, substring(elas_net$cluster,3)), "coef.mean"]
+
+table_mmu_id <- cbind(gene_table[match(res_table$gene, gene_table$SYMBOL),], res_table$cl_id, res_coef.mean)
+table_mmu_id <- na.omit(table_mmu_id)
+table_mmu_up <- subset(table_mmu_id, res_coef.mean>0)
+table_mmu_down <- subset(table_mmu_id, res_coef.mean<0)
+
+table_split <- split(table_mmu_down , f =table_mmu_down$`res_table$cl_id`)
+mmu_cluster <- lapply(table_split, function(x) x[,2])
+
+ck <- compareCluster(geneCluster = mmu_cluster,
+                     fun = "enrichGO", OrgDb="org.Hs.eg.db",  pvalueCutoff  = 0.05)
+
+ck_filter <- dropGO(ck, level =1)
+pdf('~/Dropbox/Apodemus_transcriptome/analysis/pathway_plot/coef.mean_larger0/GO_pathway_human_down.pdf',width=35,height=10)
+dotplot(ck, colorBy = "p.adjust", showCategory = 2, by = "geneRatio",
+        includeAll = T, font.size = 12)
+dev.off()
+```
