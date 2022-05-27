@@ -202,20 +202,10 @@ ipa_table_comb[,2:7] <- ipa_table_comb[,7:2]
 colnames(ipa_table_comb) <- c("pathway",names(ipa_list))
 ipa_table_comb[is.na(ipa_table_comb)] =0
 
-# table split into overlapped table and week1 only table
-# ipa_table_overlap <- subset(ipa_table_comb, rowSums(ipa_table_comb[,c(2,7)]) < rowSums(ipa_table_comb[,2:7]))
-# ipa_table_week1_7 <- subset(ipa_table_comb, rowSums(ipa_table_comb[,c(2,7)]) == rowSums(ipa_table_comb[,2:7]) )
-#ipa_table_overlap <- ipa_table_overlap[,c(1,2,7)]
-#ipa_table_overlap <- subset(ipa_table_comb, ipa_table_comb$Week1!=rowSums(ipa_table_comb[,2:7]))
-
 ipa_table_overlap <- ipa_table_comb
 
 ipa_table_overlap_correlation <- subset(ipa_table_overlap, rowSums(ipa_table_overlap[,c(2,3,5)])>0)
 
-
-# write.table(ipa_table_comb, file="~/Dropbox/sheep_arc/manuscript/pdf_figures/wei_pdf_figs/ipa_table_full.csv", row.names = F, col.names = T, quote = F, sep=";")
-
-#ord <- hclust( dist(ipa_table_overlap, method = "euclidean"), method = "ward.D" )$order
 ord <- order(ipa_table_comb[,2], ipa_table_comb[,3],ipa_table_comb[,4],ipa_table_comb[,5],ipa_table_comb[,6],ipa_table_comb[,7])
 longData <- melt(ipa_table_overlap, id = "pathway")
 colnames(longData) <- c("pathway", "week", "log_p")
@@ -286,7 +276,6 @@ ggplot(longData, aes(x=pathway, y=var2, fill=log_p) )+
     theme_void()+
     theme(legend.position = "top")
 dev.off()
-#ggsave(p, file="~/Dropbox/sheep_arc/manuscript/pdf_figures/wei_pdf_figs//cicular_plot.pdf", height = 8, width =8)
 
 ```
 
@@ -635,10 +624,8 @@ pvalue_mat_imm_worm <- pvalue_mat_imm
        cor_worm <- cor_mat_imm_worm[,c("D0_Vax", "D0_Ctrl","D7_Vax","D7_Ctrl","D21_Vax","D21_Ctrl")]
       pvalue_worm_day0 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D0_Vax"])[1:10],]
       pvalue_worm_day7 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D7_Vax"])[1:10],]
-     #pvalue_worm_day14 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D14_Vax"])[1:10],]
       pvalue_worm_day21 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D21_Vax"])[1:10],]
-     # pvalue_worm_day28 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D28_Vax"])[1:10],]
-     # pvalue_worm_day42 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D42_Vax"])[1:10],]
+
 
       pvalue_worm_select <- unique(rbind(pvalue_worm_day0, pvalue_worm_day7, pvalue_worm_day21))
       cor_worm_vax <- cor_mat_imm_worm[rownames(pvalue_worm_select),c("D0_Vax", "D7_Vax","D21_Vax")]
@@ -669,8 +656,6 @@ pvalue_mat_imm_worm <- pvalue_mat_imm
                 col = colorRamp2(c(min(cor_worm_vax, cor_worm_ctrl), 0, max(cor_worm_vax, cor_worm_ctrl)),
                  #col = colorRamp2(c(-50, 0, 50),
                  c("firebrick2", "white", "deepskyblue2")), row_names_max_width = unit(18,"cm"),
-                         #bottom_annotation = ha_rot_cn,
-                         #bottom_annotation_height = unit(2, "cm"),
                          show_column_names = T,
                          show_row_names = F,
                         show_row_dend = T,
@@ -695,35 +680,6 @@ write.table(rownames(cor_worm_vax), file=paste0("WGCNA_",para_opt,"/cor_vax_",PA
 
 
 
-
-```
-
-
-
-
-```{r}
-#   Single gene expression
-# for (i in 1:nrow(sel_gene_scale)) {
-#   gene_df <- as.data.frame(t(sel_gene_scale[i,]))
-#   colnames(gene_df) <- "gene"
-#   gene_df$group <- as.factor(substring(rownames(gene_df),1,2))
-#   gene_df$week <- as.factor(substring(rownames(gene_df),3,4))
-#   gene_df$treatment <- "vax"
-#   gene_df[gene_df$group=="g2"|gene_df$group=="g4",]$treatment <- "control"
-#   gene_df$treatment <- relevel(as.factor(gene_df$treatment), ref="vax")
-#
-#   p <- ggplot(gene_df, aes(x = week, y = gene))+
-#     geom_line(aes(x = week, y = gene, group=group, color = group, linetype = treatment), size=1)+
-#     geom_point(aes(color = group)) +
-#     theme(legend.position = "top")+
-#     scale_size_manual(values = c(10,1,3,1))+
-#     scale_color_manual(values = c("orangered3","lightpink1","royalblue3","skyblue1"))+
-#     scale_x_discrete(breaks=as.character(1:6), name = "Time",
-#                      labels=c("W1", "W2", "W3", "W4", "W5", "W7"))+
-#     ylab("Averaged Log2 Gene Expression")+
-#     theme_bw()
-#   ggsave(p, file=paste0("WGCNA/python_elasticnet/week1_7_1000genes/gene_temporal_pattern/pathway_single_gene/",rownames(sel_gene_scale)[i],".png"), width=6, height=4)
-#   }
 
 ```
 

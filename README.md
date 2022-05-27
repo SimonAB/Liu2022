@@ -18,7 +18,6 @@ Wei Liu<sup>1,†</sup>, Tom N. McNeilly<sup>2,†,*</sup>, Mairi Mitchell<sup>2
   - [multiqc_report_biopsy.html](#multiqc_report_biopsyhtml)
   - [ipa_3V_6V.ods](#ipa_3v_6vods)
   - [gene_cluster_masigpro.ods](#gene_cluster_masigproods)
-- [Code](#code)
 - [Raw transcriptomes](#raw-transcriptomes)
   - [Sequencing parameters](#sequencing-parameters)
   - [File & sample list](#file--sample-list)
@@ -31,17 +30,15 @@ The quality control [MultiQC](https://multiqc.info) report of biopsy RNAseq samp
 
 ### [ipa_3V_6V.ods](Supplementary%20Data/ipa_3V_6V.ods)
 
-Ingenuity Pathway analysis (IPA) results for all the WGCNA clusters shown in Fig 2.
+Ingenuity Pathway analysis (IPA) results for all the WGCNA clusters shown in Figure 2.
 
 ### [gene_cluster_masigpro.ods](Supplementary%20Data/gene_cluster_masigpro.ods)
 
-Differentially expressed gene list between the ageing groups. The expression levels are shown in Fig S5 C heatmap.
-
-## Code
+Differentially expressed gene list between the ageing groups. The expression levels are shown in Supplementary Figure 5C.
 
 ## Raw transcriptomes
 
-Raw transcriptomes can be downloaded from Dryad [link to be added upon publication].
+Transcriptomes are available at the Sequence Read Archive (SRA) [BioProject ID: PRJNA827252](https://www.ncbi.nlm.nih.gov/sra/?term=PRJNA827252); SRA Study ID: SRP370649 and BioSample IDs: SAMN27607111–SAMN27607290.
 
 ### Sequencing parameters
 

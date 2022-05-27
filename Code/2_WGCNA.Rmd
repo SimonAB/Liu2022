@@ -110,11 +110,6 @@ eigen <- subset(eigen, select=-c(MEgrey))
 
 # Worm and FEC
 
-# Worm <- read.csv("data/res/datTraits_worm.csv", header = T)
-# Worm <- Worm[,-1]
-# Worm_biopsy <- subset(Worm, Treatment == "Immunised Biopsy")
-#write.csv(Worm_biopsy, file=paste0("./WGCNA_res/worm_count_g1g3_biopsy.csv"), row.names = T, col.names = T)
-
 Worm_biopsy$Total.Worms[ Worm_biopsy$Total.Worms==0] <- 1
 
  Worm <- read.csv("data/res/datTraits_worm_13.csv", header = T)
@@ -137,16 +132,13 @@ para_elasticnet <- as.data.frame(as.matrix(predict(fit_elasticnet,type="coef", s
 
 para_df <- para_elasticnet
 #G1 G3 week3
-#length(which(abs(para_df$`1`)>=4e-4))
 length(which(abs(para_df$`1`)!=0))
 para_df
-#para_df
 
 para_df$gene<- rownames(para_df)
 colnames(para_df) <- c("Estimate", "gene")
 para_df <- para_df[-1,]
 #week3
-#para_df_sub <- subset(para_df, abs(Estimate)>=4e-4)
 para_df_sub <- subset(para_df, abs(Estimate)!=0)
 
 MtoH <-colorRampPalette(c('yellow' ,'firebrick2'))
@@ -155,7 +147,7 @@ library(RColorBrewer)
 library(scales)
 ggplot(data=para_df_sub, aes(x= reorder(gene,-Estimate), y = Estimate, fill=Estimate))+
   geom_bar(stat = 'identity',color="black") +
-  scale_fill_distiller(palette = "Spectral")+#,limits = c(0.01,0.035),oob=squish)+
+  scale_fill_distiller(palette = "Spectral")+
   labs(title="WGCNA clusters ranked by elastic net: Worm Count ~ Clusters ", x="Gene Clusters", y = "coeff.mean")+
   coord_flip()+
   theme_minimal()
@@ -179,8 +171,6 @@ table_oas_id <- cbind(gene_table[match(res_table$gene, gene_table$id),], res_tab
   table_oas_id$oas <- substring(table_oas_id$oas,5)
 
 #week3
-#table_oas_up <- subset(table_oas_id, res_coef.mean>=4e-4)
-#table_oas_down <- subset(table_oas_id, res_coef.mean<= -4e-4)
 
 table_oas_up <- subset(table_oas_id, res_coef.mean>0)
 table_oas_down <- subset(table_oas_id, res_coef.mean<0)
@@ -226,27 +216,8 @@ corre = "down"
 
 kegg_result <- read.csv(paste0("WGCNA/genelist_KEGG_g1g3_",week_w,"_",corre,".csv"))
 
-#WEEK1
-#kegg_result_sub <- subset(kegg_result, Cluster=="black"|Cluster=="coral2"|Cluster=="darkred"|Cluster=="greenyellow") # UP
-
 #WEEK2
 kegg_result_sub <- subset(kegg_result, Cluster=="blueviolet") # DOWN
-
-#WEEK3
-#kegg_result_sub <- subset(kegg_result, Cluster=="brown"|Cluster=="lemonchiffon3"|Cluster=="lightgoldenrod"|Cluster=="yellow")
-
-#WEEK4
-#kegg_result_sub <- subset(kegg_result, Cluster=="blueviolet") # down
-#kegg_result_sub <- subset(kegg_result, Cluster=="lightblue1"|Cluster=="saddlebrown") # UP
-
-#WEEK5
-#kegg_result_sub <- subset(kegg_result, Cluster=="deepskyblue"|Cluster=="peru") # down
-#kegg_result_sub <- subset(kegg_result, Cluster=="darkorange"|Cluster=="lightgreen"|Cluster=="magenta2"|Cluster=="lightsteelblue1"|Cluster=="skyblue") # UP
-
-#WEEK7
-#kegg_result_sub <- subset(kegg_result, Cluster=="lightyellow") # down
-#kegg_result_sub <- subset(kegg_result, Cluster=="mediumpurple3"|Cluster=="black"|Cluster=="honeydew1"|Cluster=="yellowgreen") # UP
-
 
 
 kegg_gene_only <- kegg_result_sub[,grep("Gene_Name", colnames(kegg_result_sub))]
@@ -272,7 +243,7 @@ names(colorVec) = 1:4
 weiha = HeatmapAnnotation(df = data.frame(group=substr(colnames(kegg_gene_order),1,1)),col = list(group= colorVec))
 png(file = paste0("WGCNA/complexhm_",week_w,"_",corre,".png"), height = 18, width = 18, units = 'in', res = 600)
 Heatmap(kegg_gene_order,  name = "", top_annotation = weiha, cluster_columns = F)
-dev.off()#kegg_result_sub <- subset(kegg_result, Cluster=="blueviolet") # WEEK2
+dev.off()
 
 
 
@@ -280,24 +251,6 @@ fit_multi <- cv.glmnet(t(kegg_gene_order),
                          substr(colnames(kegg_gene_order),1,1),
                          family = "multinomial",  type.multinomial = "grouped",alpha=0)
 fit_coef <- coef(fit_multi,  s = "lambda.min")
-
-# para_df<- as.data.frame(as.numeric(fit_coef[[i]]))
-# para_df$gene<- rownames(fit_coef[[i]])
-# colnames(para_df) <- c("Estimate", "gene")
-# para_df <- para_df[-1,]
-# para_df_sub <- subset(para_df, abs(Estimate)!=0)
-# MtoH <-colorRampPalette(c('yellow' ,'firebrick2'))
-# LtoM <-colorRampPalette(c('blue','chartreuse'))
-# library(RColorBrewer)
-# library(scales)
-# #ggplot(data=para_df_sub, aes(x= reorder(gene,-Estimate), y = Estimate, fill=Estimate))+
-#   ggplot(data=para_df_sub, aes(x= gene, y = Estimate, fill=Estimate))+
-#   geom_bar(stat = 'identity',color="black") +
-#   scale_fill_distiller(palette = "Spectral")+#,limits = c(0.01,0.035),oob=squish)+
-#   labs(title="WGCNA clusters ranked by elastic net: Worm Count ~ Clusters ", x="Gene Clusters", y = "coeff.mean")+
-#   coord_flip()+
-#   theme_minimal()
-# ggsave(paste0("WGCNA/multinomial_coeff_nonzero_",week_w,"_",i,".pdf"), width = 10, height = 10)
 
 # heatmap of coefficient
 print(nrow(kegg_gene_order))
@@ -311,9 +264,8 @@ for (i in 1:4 ) {
   top_gene <- c(top_g,top_gene)
 }
 top_gene <- unique(top_gene)
-#para_mat <- para_mat[top_gene,]
 
-#para_mat <- para_mat[order(para_mat[,1],para_mat[,2],para_mat[,3],para_mat[,4],decreasing=TRUE),]
+
 colnames(para_mat) <- c("G1", "G2", "G3", "G4")
 longData <- melt(para_mat)
 head(longData, 20)
@@ -383,22 +335,6 @@ colnames(kegg_gene_exp) <- paste(substring(colnames(kegg_gene_exp),6,6),colnames
 
 kegg_gene_scale <- t(scale(t(kegg_gene_exp)))
 kegg_gene_order <- kegg_gene_scale[,order(colnames(kegg_gene_scale))]
-
-# gg_color_hue <- function(n) {
-#     hues = seq(15, 375, length=n+1)
-#     hcl(h=hues, l=65, c=100)[1:n]
-# }
-# colorVec = gg_color_hue(4)
-# names(colorVec) = 1:4
-# weiha = HeatmapAnnotation(df = data.frame(group=substr(colnames(kegg_gene_order),1,1)),col = list(group= colorVec))
-# #png(file = paste0("WGCNA/ingenuity_res/complexhm_",week_w,"_",corre,".png"), height = 18, width = 18, units = 'in', res = 600)
-# Heatmap(kegg_gene_order,  name = "", top_annotation = weiha, cluster_columns = F)
-# #dev.off()
-#
-# fit_multi <- cv.glmnet(t(kegg_gene_order),
-#                          substr(colnames(kegg_gene_order),1,1),
-#                          family = "multinomial",  type.multinomial = "grouped",alpha=0)
-# fit_coef <- coef(fit_multi,  s = "lambda.min")
 
 # correlation with worm
 Worm <- read.csv("data/res/datTraits_worm.csv", header = T)

@@ -72,7 +72,6 @@ colnames(RNA_samplesheet) <- c("sample","group_week", "concentration")
 RNA_samplesheet$group <- unlist(lapply(strsplit(gsub('([[:upper:]])', ' \\1', as.character(RNA_samplesheet$group_week))," "), "[", 2))
 RNA_samplesheet$week <- unlist(lapply(strsplit(gsub('([[:upper:]])', ' \\1', as.character(RNA_samplesheet$group_week))," "), "[", 3))
 RNA_samplesheet <- RNA_samplesheet[,c("sample", "group", "week","concentration")]
-#RNA_samplesheet[,"sample"] <- gsub("_","-",RNA_samplesheet[,"sample"])
 head(RNA_samplesheet)
 sample_list <- cbind(RNA_samplesheet[match(kal_dirs[,1],RNA_samplesheet$sample),], kal_dirs[,2])
 sample_list[,5] <- as.character(sample_list[,5])
@@ -82,9 +81,7 @@ colnames(sample_list)[5] <- "path"
 
 #Select RNA-seq samples acrossing time and treatment
 ```{r, echo=T}
-# week!="Week9"&week!="Lymph"; group=="Group3"|group=="Group4"
 subset_samples <- dplyr::filter(sample_list,week!="Week9"&week!="Lymph" )
-#save(subset_samples, file="data/res/sample_table_w1_7.RData")
 head(subset_samples)
 files <- file.path(subset_samples$path, "abundance_change.tsv")
 names(files) <- subset_samples[,"sample"]
@@ -96,17 +93,6 @@ all(file.exists(files))
 
 ```{r find gene name for each transcript ID}
 # Mapping transcript ID with Gene name
-# mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL",
-#                          dataset = 	"oaries_gene_ensembl",#oaries_gene_ensembl",
-#                          host = 'ensembl.org')
-#tx2gene <- getBM(attributes = c("ensembl_transcript_id", "ensembl_gene_id", "external_gene_name"), mart = mart)
-
-# ensembl=useMart("ensembl")
-# a=listDatasets(ensembl)
-# listMarts(host="ensembl.org")
-# write.table(a, "list_ensembl.csv")
-#save(tx2gene, file="tx2gene.RData")
-#write.table(tx2gene, file="tx2gene.csv", row.names = F)
 load("tx2gene.RData")
 tx2gene_name <- tx2gene[,c(1,3)]
 head(tx2gene_name,10)
@@ -176,8 +162,6 @@ ggplot_dimRedu <- function(input_data, sample_size, X, mtd){
   geom_point(data=input_data,aes(x=V1,y=V2,colour=week, shape=group),size=4) +# add the point markers
   scale_shape_manual(values = c(2,17,1,16))+
   # use sample name as label to find the outliers
-  #geom_point()+
-  #geom_text(data=dimRedu,aes(x=V1, y=V2,label=name),hjust=0, vjust=0)+
   theme_bw() + #ggtitle(paste(X,mtd,"for",sample_size,"RNA-seq samples", sep=" "))+
    theme(
         axis.ticks = element_blank(),  # remove axis ticks
@@ -236,44 +220,8 @@ dimRedu$name <- rownames(dimRedu)
 dimRedu$week[dimRedu$week=="Week9"] <- "Abomasum"
 dimRedu$week[dimRedu$week=="Lymph"] <- "Lymph Node"
 
-# dimRedu$week <- as.factor(dimRedu$week)
-# levels(dimRedu$week) <- c("Week1","Week2","Week3","Week4","Week5","Week7","Abomasum","Lymph Node"  )
-
 p=ggplot_dimRedu(dimRedu, sample_size="180", X, mtd)
 
-#gplot_test=ggplot_dimRedu(dimRedu, sample_size="180", X, mtd)
-#gplot_test
-#ggplot_data_storage <- ggplot_build(gplot_test)$data
-#levels(as.factor(ggplot_data_storage[[2]]$colour))
-#ggsave(paste("~/Dropbox/BBSRC-ARC/figs/",X,mtd,"for Biopsy RNA-seq samples.pdf", sep=" "), width = 7, height = 6)
-#ggsave(paste("~/Dropbox/wei_glasgow_work/vignette_BBSRC_ARC/paper_figs/",X,mtd,"for biopsy RNA-seq samples.png", sep=" "), width = 7, height = 6)
-
-```
-
-
-```{r, pca for biopsy, echo=F}
-#dimRedu <- subset(dimRedu, dimRedu$week !="Week9"& dimRedu$week !="Lymph")
-#remove the outliers
-#dimRedu <- subset(dimRedu,dimRedu$name!="6615g1w1"&dimRedu$name!="6647g3w7"&dimRedu$name!="6576g3w7"&dimRedu$name!="6615g1w5")
-# mds_cmd <- filter(mds_cmd, sample!="6595g4w3"&sample!="6923g4w2"&sample!="6576g3w3"&sample!="6652g3w3")
-#ggplot_dimRedu(dimRedu, sample_size="biopsy (time series)", X, mtd)
-```
-
-```{r, error with rgl package}
-  # rtsne_in <- t(as.matrix(unique(X_norm)))
-  # rtsne_out_3 <- Rtsne(rtsne_in, dims=3)
-  # dimRedu <- as.data.frame(rtsne_out_3$Y)
-  # colnames(dimRedu) <- c("V1","V2", "V3")
-  # dimRedu$group<- subset_samples$group
-  # dimRedu$group[dimRedu$group=="Group1"] <- "3mo_vax"
-  # dimRedu$group[dimRedu$group=="Group2"] <- "3mo_ctl"
-  # dimRedu$group[dimRedu$group=="Group3"] <- "6mo_vax"
-  # dimRedu$group[dimRedu$group=="Group4"] <- "6mo_ctl"
-  # dimRedu$week <- subset_samples$week
-  # dimRedu$name <- rownames(dimRedu)
-  # scatterplot3d(x=dimRedu$V1, y=dimRedu$V2 ,z=dimRedu$V3,color=substring(dimRedu$week,5),angle = 180)
-  #
-  # plot3d(x=dimRedu$V1, y=dimRedu$V2 ,z=dimRedu$V3)
 ```
 
 ## FEC & Worm Count
@@ -289,26 +237,6 @@ allTraits <- read_xlsx("data/read_in/Complete data set Tcirc AHRC 010617.xlsx",s
 dim(allTraits)
 datTraits_worm <- allTraits[,c("Animal_ID","Group","Treatment","Total_Worms")]
 
-#pdf("~/Dropbox/BBSRC-ARC/figs/Total_worm_count.pdf", height=6, width=8)
-# basic boxplot
-#cols  <- colorRampPalette(brewer.pal(12, "Set3"), alpha=TRUE)(4)
-#colsm <-matrix(rep(cols, each=4), ncol=4)
-# boxplot(datTraits_worm$Total_Worms ~ datTraits_worm$Group, outcol="white", col=cols,
-#         #col=c("rosybrown1","rosybrown4","paleturquoise1","paleturquoise4"),
-#         main="Total Worm Count", xlab="Treatment", ylab="Worm Count",
-#         names = c("3mo_Vax", "3mo_Ctrl","6mo_Vax", "6mo_Ctrl"))
-# # Add data points
-# mylevels<-levels(as.factor(datTraits_worm$Group))
-# levelProportions<-summary(as.factor(datTraits_worm$Group))/nrow(datTraits_worm)
-# for(i in 1:length(mylevels)){
-#   thislevel<-mylevels[i]
-#   thisvalues<-datTraits_worm[datTraits_worm$Group==thislevel, "Total_Worms"]
-#   # take the x-axis indices and add a jitter, proportional to the N in each level
-#   myjitter<-jitter(rep(i, length(thisvalues)), amount=levelProportions[i]/2)
-#   points(myjitter, thisvalues, pch=19, col= t_col(cols[i])   ) #rgb(0,0,0,.2) )
-# }
-#dev.off()
-
 source("ztheme.R")
 
 cols <- c("orangered3","lightpink2","royalblue3","skyblue1")
@@ -318,7 +246,6 @@ ggplot(datTraits_worm, aes(x=Group,y=Total_Worms) )+
   geom_jitter(aes(color=Group),size=3,alpha=.4)+
   scale_fill_manual(values=cols)+
   scale_color_manual(values=cols)+
-  #scale_y_continuous(breaks=seq(0,1,.1), labels=scales::percent)+
   guides(fill=FALSE,color=FALSE)+
   labs(x="\nLamb group",y="Total Worm Count \n")+
   scale_x_discrete(breaks=c("1","2","3","4"),labels=c("3mo_Vax", "3mo_Ctrl", "6mo_Vax", "6mo_Ctrl"))+
@@ -346,7 +273,6 @@ datTraits_worm[datTraits_worm$protection<0, "protection"] = 0
 
 datTraits_worm_13 <- subset(datTraits_worm, Group==1|Group==3 )
 
-#pdf("~/Dropbox/BBSRC-ARC/figs/Total_worm_count_protection_level.pdf", height=6, width=8)
 boxplot(datTraits_worm_13$protection ~ datTraits_worm_13$Group, outcol="white",
         col=c("rosybrown1","paleturquoise1"),
         main="Protection Level of total worm count", xlab="Treatment", ylab="Worm Count",
@@ -361,9 +287,6 @@ for(i in 1:length(mylevels)){
   myjitter<-jitter(rep(i, length(thisvalues)), amount=levelProportions[i]/2)
   points(myjitter, thisvalues, pch=20, col=rgb(0,0,0,.2))
 }
-#dev.off()
-#write.csv(datTraits_worm_13, file="data/res/datTraits_worm_13.csv", col.names = T)
-#write.csv(datTraits_worm, file="data/res/datTraits_worm.csv", col.names = T)
 
 ```
 
@@ -388,23 +311,7 @@ axis(1, at=1:length(colnames(datTraits_AUC)[-c(1:3)]), labels=colnames(datTraits
 legend(1, 10000, legend=c("1: 3M_Vax", "2: 3M_Ctrl", "3: 6M_Vax", "4: 6M_Ctrl"),
        col=plot_colors, lty=c(1,2,1,2), cex=0.8)
 dev.off()
-## Cumulated FEC in the last day
-# basic boxplot
-# pdf("~/Dropbox/BBSRC-ARC/figs/Final Faecal Egg Counts.pdf", width=8, height = 6)
-# boxplot(datTraits_AUC$AUCDay95 ~ datTraits_AUC$Group, outcol="white",
-#         col=c("rosybrown1","rosybrown4","paleturquoise1","paleturquoise4"),
-#         main="Final FEC", xlab="Treatment", ylab="AUC",
-#         names = c("3mo_Vax", "3mo_Ctrl","6mo_Vax", "6mo_Ctrl"))
-# # Add data points
-# mylevels<-levels(as.factor(datTraits_AUC$Group))
-# levelProportions<-summary(as.factor(datTraits_AUC$Group))/nrow(datTraits_AUC)
-# for(i in 1:length(mylevels)){
-#   thislevel<-mylevels[i]
-#   thisvalues<-datTraits_AUC[datTraits_AUC$Group==thislevel, "AUCDay95"]
-#   myjitter<-jitter(rep(i, length(thisvalues)), amount=levelProportions[i]/2)
-#   points(myjitter, thisvalues, pch=20, col=rgb(0,0,0,.2))
-# }
-# dev.off()
+
 ```
 
 ```{r}
@@ -415,7 +322,6 @@ ggplot(datTraits_AUC, aes(x=Group,y=AUCDay95) )+
   geom_jitter(aes(color=Group),size=3,alpha=.4)+
   scale_fill_manual(values=cols)+
   scale_color_manual(values=cols)+
-  #scale_y_continuous(breaks=seq(0,1,.1), labels=scales::percent)+
   guides(fill=FALSE,color=FALSE)+
   labs(x="\nLamb group",y="Cumulative FEC\n")+
   scale_x_discrete(breaks=c("1","2","3","4"),labels=c("3mo_Vax", "3mo_Ctrl", "6mo_Vax", "6mo_Ctrl"))+
@@ -538,9 +444,6 @@ t.test(g1_worm, g2_worm)
 
 ```{r}
   t_col <- function(color, percent = 30, name = NULL) {
-#	  color = color name
-#	percent = % transparency
-#	   name = an optional name for the color
 ## Get RGB values for named color
   rgb.val <- col2rgb(color)
 ## Make new color using input color as base and alpha set by transparency
@@ -565,7 +468,6 @@ levels(fec_worm$Treatment)[levels(fec_worm$Treatment)=="3"] <- "6Mo_vax"
 levels(fec_worm$Treatment)[levels(fec_worm$Treatment)=="4"] <- "6Mo_ctrl"
 
 cols <- c("orangered3","lightpink2","royalblue3","skyblue1")
-#cols <- c("orangered3","grey","royalblue3","grey")
 ggplot(fec_worm, aes(x=FEC,y=Worm_count, color=Treatment, shape=Treatment))+
   geom_point(size=4)+
   scale_shape_manual(values=c(16,10,16,10))+
@@ -591,44 +493,6 @@ dev.off()
 
 
 ```
-
-
-
-
-
-## Biopsy samples Analysis: dynamic pairwise comparison
-
-<!-- ### DESeq2  -->
-<!-- ```{r } -->
-
-<!-- ddsTC <- DESeqDataSetFromTximport(txi, sampleTable, design = ~condition) -->
-
-<!-- resultsNames(ddsTC) -->
-<!-- ## for control_y -->
-<!-- resTC <- results(ddsTC, name="time_Week2_vs_Week1", test="Wald", alpha=0.05) -->
-<!-- resTC<- results(ddsTC,  test="Wald", alpha = 0.1, -->
-<!--                 contrast=list(c("time_Week2_vs_Week1","conditionVax.timeWeek5"))) -->
-<!-- summary(resTC) -->
-<!-- resTC <- results(ddsTC, contrast=list(c("condition_Vax_vs_Control","conditionVax.timeWeek3")), test="Wald",alpha = 0.05) -->
-<!-- resTC <- results(ddsTC, name="conditionVax.timeWeek5", test="Wald", alpha = 0.1) -->
-<!-- summary(resTC) -->
-<!-- resTC <- results(ddsTC, name="condition_Vax_vs_Control", test="Wald",alpha = 0.05) -->
-<!-- resTC <- results(ddsTC, name="Intercept", test="Wald",alpha = 0.05) -->
-
-<!-- summary(resTC) -->
-<!-- head(resTC[order(resTC$padj),],500) -->
-
-
-
-<!-- ``` -->
-
-<!-- ### edgeR -->
-
-<!-- ```{r } -->
-
-
-<!-- ``` -->
-
 
 ### maSigPro
 ```{r, maSigPro}
@@ -719,82 +583,6 @@ for (ind_cl in 1:7) {
             cexCol=0.9,cexRow=0.5,density.info="density", breaks = seq(-2.67, 3, length.out = 200),
             Rowv=T, Colv=F)
   dev.off()
-
-  # load(paste0("masigpro/get_",sel_group,".RData"))
-  # gene_profile <- get$sig.genes$sig.profiles
-  # gene_profile_sub <- gene_profile[match( gene_list[[ind_cl]][,1], rownames(gene_profile)),]
-  # test <- PlotGroups(gene_profile_sub, edesign = get$sig.genes$edesign)
-  # edesign = as.data.frame(get$sig.genes$edesign)
-  # gene_mean <- vector(mode = "list", length=2)
-  # gene_mean_df <- vector(mode = "list", length=2)
-
-  # edesign_sub <- subset(edesign, Group1==1)
-  # edesign_sub <- edesign_sub[order(edesign_sub$replicates),]
-  # #gene_mean[[1]] <- matrix(0, 6, 8)
-  # gene_mean[[1]] <- matrix(0, 6, 7)
-  # #group1: i
-  # #group 2: i+6
-  # #group3: i+12
-  # for (i in 1:6) {
-  #   gene_profile_rep <- gene_profile_sub[,match(rownames(subset(edesign_sub, replicates==(i))), colnames(gene_profile_sub))]
-  #   gene_mean[[1]][i,] <- log2(colMeans(gene_profile_rep))
-  # }
-  #
-  # gene_mean[[1]] <- as.data.frame(gene_mean[[1]])
-  # gene_mean_df[[1]] <- melt(t(gene_mean[[1]]))
-  # colnames(gene_mean_df[[1]]) <- c("rep", "time", "gene")
-  # gene_mean_df[[1]]$Group <- "Group1_3mo_vax"
-  # #gene_mean_df[[1]]$Group <- "Group3_6mo_vax"
-  # #gene_mean_df[[1]]$Group <- "Group4_6mo_control"
-  # gene_mean_df[[1]]$mean <- 0
-  # for (i in 1:6) {
-  #   df_sub <- subset(gene_mean_df[[1]], time==i)
-  #   gene_mean_df[[1]]$mean[gene_mean_df[[1]]$time==i] <- mean(df_sub$gene)
-  # }
-  #
-  # edesign_sub <- subset(edesign, Group3==1)
-  # #edesign_sub <- subset(edesign, Group2==1)
-  # edesign_sub <- edesign_sub[order(edesign_sub$replicates),]
-  # #gene_mean[[2]] <- matrix(0, 6, 7)
-  # gene_mean[[2]] <- matrix(0, 6, 8)
-  #
-  # # group 3: i+12
-  # # group 2: i+6
-  # # group 4: i+18
-  # for (i in 1:6) {
-  #   gene_profile_rep <- gene_profile_sub[,match(rownames(subset(edesign_sub, replicates==(i+18))), colnames(gene_profile_sub))]
-  #   gene_mean[[2]][i,] <- log2(colMeans(gene_profile_rep)) # log2
-  # }
-  # gene_mean[[2]] <- as.data.frame(gene_mean[[2]])
-  # gene_mean_df[[2]] <- melt(t(gene_mean[[2]]))
-  # colnames(gene_mean_df[[2]]) <- c("rep", "time", "gene")
-  # gene_mean_df[[2]]$Group <- "Group4_6mo_ctrl"
-  # #gene_mean_df[[2]]$Group <- "Group3_6mo_vax"
-  # #gene_mean_df[[2]]$Group <- "Group2_3mo_ctrl"
-  # gene_mean_df[[2]]$mean <- 0
-  # for (i in 1:6) {
-  #   df_sub <- subset(gene_mean_df[[2]], time==i)
-  #   gene_mean_df[[2]]$mean[gene_mean_df[[2]]$time==i] <- mean(df_sub$gene)
-  # }
-  #
-  # gene_df <- rbind(gene_mean_df[[1]], gene_mean_df[[2]])
-  # gene_df$Group <- as.factor(gene_df$Group)
-  # gene_df$time <- as.factor(gene_df$time)
-  # plot_cl <- ggplot(gene_df, aes(x = time, y = gene))+
-  #   geom_line(aes(x = time, y = mean, group=Group, color = Group), size=1.5)+
-  #   geom_point(aes(color = Group, shape = Group), size=2) +
-  #   theme(legend.position = "top")+
-  #   scale_shape_manual(values=c(16,1))+
-  #   scale_color_manual(values = c("lightpink1","skyblue1"))+
-  #   #scale_color_manual(values = c("royalblue3","skyblue1"))+
-  #   #scale_color_manual(values = c("orangered3","lightpink1"))+
-  #   #scale_color_manual(values = c("orangered3","royalblue3"))+
-  #   scale_x_discrete(breaks=as.character(1:6), name = "Time",
-  #                    labels=c("W1", "W2", "W3", "W4", "W5", "W7"))+
-  #   ylab("Averaged Log2 Gene Expression")+
-  #   theme_bw()
-  # ggsave(plot_cl, file=paste("masigpro/",sel_group,"_test/",ind_cl ,"_exp.png", sep=""), width=6, height=4)
-  # dev.off()
 }
 
 
@@ -854,12 +642,6 @@ write.csv(kegg_result,file=paste0("masigpro/kegg_gene_list_",sel_group ,".csv"),
 ###  kegg #####
 sel_group <- "1vs3"
 kegg_result <- read.csv(paste0("masigpro/kegg_gene_list_",sel_group ,".csv"))
-
-# 1vs3
-#kegg_result_sub <- subset(kegg_result, ID=="oas04060"|ID=="oas04664")
-
-# 1vs2
-#kegg_result_sub <- subset(kegg_result, ID=="oas04630"|ID=="oas04060"|ID=="oas04630"|ID=="oas04664"|ID=="oas04664"|ID=="oas04657")
 
 # 3vs4
 kegg_result_sub <- subset(kegg_result, ID=="oas04630"|ID=="oas04060"|ID=="oas04664")
@@ -1024,14 +806,6 @@ ggsave(p, file="~/Dropbox/sheep_arc/paper_figs/distribution_genes.pdf", height =
 
 
 ```{r}
-# ggplot(df, aes(Group,fill = Group))+
-#  geom_bar()+
-#  coord_flip()+
-#  scale_fill_manual(values=c("lightcoral", "lightskyblue", "lightgreen", "lightgoldenrod1"))+
-#   #geom_text(aes(y=V2,label=V3), vjust=1.6,             color="white", size=3.5)+
-# theme_bw()+theme(legend.text=element_text(size=14))+ggtitle("The distribution of DE genes in each cluster and treatments")+labs(y = "Number of Genes")
-#   #ggsave("masigpro/stack plot of no of genes in each cluster and treatment.png", height = 4, width = 6)
-#
 
 library("VennDiagram")
 library("gplots")
@@ -1092,28 +866,21 @@ head(longData, 20)
 max(longData$log_p)
 min(longData$log_p)
 
-#longData$group <- factor( longData$group, levels = colnames(ipa_table_comb)[-1])
 longData$pathway<- factor( longData$pathway, levels = ipa_table_comb$pathway[ord] )
 longData$group <- factor(longData$group, levels=c("2vs4","1vs2","3vs4","1vs3"))
-#longData$log_p <- as.factor(logData$log_p)
-#
+
 myPalette <- colorRampPalette(brewer.pal(9, "YlGnBu"), space="Lab")
 
 
 require(grid) # for unit()
 p=ggplot(longData,aes(x = group, y = pathway, fill = log_p))+
   geom_tile(colour = "white", size=0.5)+
-  #geom_text(aes(Var2, Var1, label = round(value,2)), color = "black", size = 3) +
+
   scale_fill_gradientn(colours = myPalette(100),name=expression("-log"[10]*"(P-value)"),limits = c(min(longData$log_p),max(longData$log_p)),oob=squish, na.value = 'salmon')+
-  #scale_x_reverse()+
-  #scale_y_reverse()+
-  #scale_y_discrete(expand = c(0, 0), position="top")+
   coord_equal()+
- # coord_flip()+
   theme(legend.position="right")+
   theme(text = element_text(size=14), axis.text.y = element_text(size=10),
         axis.text.x = element_text(angle = 60, vjust = 1, size = 10, hjust = 1),
         axis.title.y = element_blank(), axis.title.x = element_blank(), panel.background = element_rect(fill = "white",colour = "white"),  panel.grid.major = element_line(size = 0.5, linetype = 'solid', colour = "black"), panel.grid.minor = element_line(size = 0.25, linetype = 'solid',colour = "black"))
-  #ggsave("masigpro/ingenuity/pathway_heatmap/pathway_heatmap.png", height =20, width = 3)
 
 ```
