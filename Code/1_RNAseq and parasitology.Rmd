@@ -3,7 +3,9 @@ title: "BBSRC_ARC"
 author: "Simon Babayan & Wei Liu"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
---
+---
+
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -11,94 +13,99 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r packages, echo=F, message=F, warning=FALSE}
 rm(list=ls())
-setwd("~/Dropbox/sheep_arc/")
+options(stringsAsFactors = FALSE)
+
 # samples preparation
 library("readr")
 library("readxl")
-#library("xlsx") #this requires java?!
 library("dplyr")
 library("plyr")
-#
 library("ensembldb")
 library("biomaRt")
 library("tximport")
 library("edgeR")
 library("DESeq2")
-#library("Rtsne")
-#
+library("Rtsne")
 library("ggplot2")
-#library("plot3D")
-#library("rgl")
-#library("scatterplot3d")
 library("extrafont")
-
-#
 library("maSigPro")
 library("MASS")
 library("RColorBrewer")
 library("gplots")
 library("reshape2")
-
-#
-#library("clusterProfiler")
-#library("DOSE")
 library("stringr")
-
-#
 library("scales")
 library("glmnet")
-
-# heatmap
 library("ComplexHeatmap")
 library("tidyr")
-
-## Venn
 library("VennDiagram")
-options(stringsAsFactors = FALSE)
 
 ```
 
 <!-- prepare the RNA-seq sample files -->
-```{r, echo=F, include=F}
-base_dir <- "~/Dropbox/wei_glasgow_work/kallisto_tximport/full_kallisto_data/"
+
+# RNAseq samples samplesheet
+```{r, sample preparation}
+# user's RNAseq reads count directory. this example is from Kallisto
+base_dir <- "~/Dropbox/wei_glasgow_work/kallisto_tximport/full_kallisto_data/" 
 sample_id <- list.files(path=base_dir)
 kal_dirs <- as.data.frame(t(sapply(sample_id, function(id) c(id,file.path(base_dir,id)))))
 colnames(kal_dirs) <- c("sample","path")
 head(kal_dirs)
-RNA_samplesheet <- read_excel("data/read_in/NGSSampleForm_filltered.xlsx")
+
+# samplesheet directory 
+RNA_samplesheet <- read_excel("~/Dropbox/sheep_arc/data/read_in/NGSSampleForm_filltered.xlsx")
 RNA_samplesheet <- RNA_samplesheet[,-1]
 colnames(RNA_samplesheet) <- c("sample","group_week", "concentration")
-
 RNA_samplesheet$group <- unlist(lapply(strsplit(gsub('([[:upper:]])', ' \\1', as.character(RNA_samplesheet$group_week))," "), "[", 2))
 RNA_samplesheet$week <- unlist(lapply(strsplit(gsub('([[:upper:]])', ' \\1', as.character(RNA_samplesheet$group_week))," "), "[", 3))
 RNA_samplesheet <- RNA_samplesheet[,c("sample", "group", "week","concentration")]
-head(RNA_samplesheet)
 sample_list <- cbind(RNA_samplesheet[match(kal_dirs[,1],RNA_samplesheet$sample),], kal_dirs[,2])
 sample_list[,5] <- as.character(sample_list[,5])
 colnames(sample_list)[5] <- "path"
+head(RNA_samplesheet)
+
 
 ```
 
 #Select RNA-seq samples acrossing time and treatment
+# RNAseq samples metadata
 ```{r, echo=T}
+# week!="Week9"&week!="Lymph"; group=="Group3"|group=="Group4"
+# We don't use week9 and lymph-nodes samples
 subset_samples <- dplyr::filter(sample_list,week!="Week9"&week!="Lymph" )
-head(subset_samples)
+#save(subset_samples, file="data/res/sample_table_w1_7.RData")
 files <- file.path(subset_samples$path, "abundance_change.tsv")
 names(files) <- subset_samples[,"sample"]
 all(file.exists(files))
 
+head(subset_samples)
+
+
 ```
 
 
-
+# Ensembl transcript ID to gene sysmbol mapping
 ```{r find gene name for each transcript ID}
 # Mapping transcript ID with Gene name
-load("tx2gene.RData")
+# mart <- useMart(biomart = "ENSEMBL_MART_ENSEMBL",
+#                          dataset = 	"oaries_gene_ensembl",#oaries_gene_ensembl",
+#                          host = 'ensembl.org')
+#tx2gene <- getBM(attributes = c("ensembl_transcript_id", "ensembl_gene_id", "external_gene_name"), mart = mart)
+# ensembl=useMart("ensembl")
+# a=listDatasets(ensembl)
+# listMarts(host="ensembl.org")
+# write.table(a, "list_ensembl.csv")
+#save(tx2gene, file="tx2gene.RData")
+#write.table(tx2gene, file="tx2gene.csv", row.names = F)
+
+# Here we load the pre-saved mapping table. user can use biomart to generate own gene table
+load("~/Dropbox/sheep_arc/tx2gene.RData")
 tx2gene_name <- tx2gene[,c(1,3)]
 head(tx2gene_name,10)
 ```
-
-```{r tximport, message=FALSE}
+# import count matrix from tximport
+```{r, message=FALSE}
 # Import and summarize transcript-level abundance estimates for transcript- and gene-level analysis--tximport
 txi <- tximport(files, type = "kallisto", tx2gene = tx2gene_name)
 # rows -- genes & cols -- samples
@@ -118,16 +125,13 @@ normMat <- normMat/exp(rowMeans(log(normMat))) # average transcript length acros
 o <- log(calcNormFactors(cts/normMat)) + log(colSums(cts/normMat))
 y <- DGEList(cts)
 y$offset <- t(t(log(normMat)) + o)
-```
-
-```{r edgeR--samples labelling, echo=F}
 all.equal(rownames(y$samples), subset_samples[,"sample"] )
 y$samples$group <- subset_samples[,"group"]
 y$samples$week <- subset_samples[,"week"]
 y$samples <- y$samples[,c(1,4,2,3)]
 ```
 
-```{r edgeR--filtering low counts}
+```{r edgeR--filtering low counts and generate normalised edgeR read counts table}
 y <- calcNormFactors(y)
 #the count for each sample is > 5 and across at least 7 samples for each gene.
 keep <- rowSums(cpm(y)>5) >= 7
@@ -140,7 +144,7 @@ hist(edgeR_norm[edgeR_norm<=500], breaks=50, col = "grey", main = "Histogram of 
 ```
 
 ### DESeq2
-```{r}
+```{r, normalised DESeq2 reads count matrix}
 sampleTable <- data.frame(condition = factor(colnames(txi$counts)))
 rownames(sampleTable) <- colnames(txi$counts)
 dds <- DESeqDataSetFromTximport(txi, sampleTable, ~condition)
@@ -150,7 +154,6 @@ dds <- dds[idx,]
 DESeq2_norm <- counts(dds, normalized=TRUE)
 dim(DESeq2_norm)
 hist(DESeq2_norm[DESeq2_norm<=1000], breaks=50, col = "grey", main = "Histogram of normalised counts by DESeq2")
-#save(DESeq2_norm, file="data/res/DESeq2_norm.RData")
 ```
 
 ## Dimensionality reduction
@@ -162,6 +165,8 @@ ggplot_dimRedu <- function(input_data, sample_size, X, mtd){
   geom_point(data=input_data,aes(x=V1,y=V2,colour=week, shape=group),size=4) +# add the point markers
   scale_shape_manual(values = c(2,17,1,16))+
   # use sample name as label to find the outliers
+  #geom_point()+
+  #geom_text(data=dimRedu,aes(x=V1, y=V2,label=name),hjust=0, vjust=0)+
   theme_bw() + #ggtitle(paste(X,mtd,"for",sample_size,"RNA-seq samples", sep=" "))+
    theme(
         axis.ticks = element_blank(),  # remove axis ticks
@@ -176,10 +181,11 @@ ggplot_dimRedu <- function(input_data, sample_size, X, mtd){
 
 
 ```{r, PCA or MDS / edgeR or DESeq2}
-# choose between edgeR and DESeq2
-X <- "DESeq2"
+# choose between edgeR and DESeq2 normalised reads count matrix. 
+X <- "DESeq2" ##
 X_norm <- get(paste0(X,"_norm"))
 print(X_norm[1:5,1:7])
+# choose between Dimensionality reduction methods: PCA, MDS or tSNE
 mtd <- "tSNE"
 ```
 
@@ -209,6 +215,8 @@ if (mtd=="PCA") {
 
 
 ```{r, ggplot}
+
+# define the Dimensionality reduction plot labels here
 colnames(dimRedu) <- c("V1","V2")
 dimRedu$group<- subset_samples$group
 dimRedu$group[dimRedu$group=="Group1"] <- "3mo_vax"
@@ -220,25 +228,21 @@ dimRedu$name <- rownames(dimRedu)
 dimRedu$week[dimRedu$week=="Week9"] <- "Abomasum"
 dimRedu$week[dimRedu$week=="Lymph"] <- "Lymph Node"
 
-p=ggplot_dimRedu(dimRedu, sample_size="180", X, mtd)
+ggplot_dimRedu(dimRedu, sample_size="180", X, mtd)
 
 ```
 
+
+
+
 ## FEC & Worm Count
 ### Worm Count
-
-
-
-
-
-```{r, worm count}
+```{r, worm count in each aging & treatment group}
 # read parasitological data
-allTraits <- read_xlsx("data/read_in/Complete data set Tcirc AHRC 010617.xlsx",sheet=1, col_names = T)[1:62,]
+allTraits <- read_xlsx("~/Dropbox/sheep_arc/data/read_in/Complete data set Tcirc AHRC 010617.xlsx",sheet=1, col_names = T)[1:62,]
 dim(allTraits)
 datTraits_worm <- allTraits[,c("Animal_ID","Group","Treatment","Total_Worms")]
-
-source("ztheme.R")
-
+source("~/Dropbox/sheep_arc/ztheme.R")
 cols <- c("orangered3","lightpink2","royalblue3","skyblue1")
 datTraits_worm$Group <- as.factor(datTraits_worm$Group)
 ggplot(datTraits_worm, aes(x=Group,y=Total_Worms) )+
@@ -246,51 +250,17 @@ ggplot(datTraits_worm, aes(x=Group,y=Total_Worms) )+
   geom_jitter(aes(color=Group),size=3,alpha=.4)+
   scale_fill_manual(values=cols)+
   scale_color_manual(values=cols)+
+  #scale_y_continuous(breaks=seq(0,1,.1), labels=scales::percent)+
   guides(fill=FALSE,color=FALSE)+
   labs(x="\nLamb group",y="Total Worm Count \n")+
   scale_x_discrete(breaks=c("1","2","3","4"),labels=c("3mo_Vax", "3mo_Ctrl", "6mo_Vax", "6mo_Ctrl"))+
   z_theme()
-ggsave("paper_figs/worm_boxplot.pdf", height=6, width=10)
-
-
 
 ```
 
-
-
-
-
-```{r}
-# Protection level
-datTraits_worm$protection <- 0
-mean_group2 <- mean(datTraits_worm[datTraits_worm$Group==2, "Total_Worms"])
-mean_group4 <- mean(datTraits_worm[datTraits_worm$Group==4, "Total_Worms"])
-datTraits_worm[datTraits_worm$Group==1, "protection"] <- 1- datTraits_worm[datTraits_worm$Group==1, "Total_Worms"]/mean_group2
-datTraits_worm[datTraits_worm$Group==2, "protection"] <- mean_group2
-datTraits_worm[datTraits_worm$Group==3, "protection"] <- 1- datTraits_worm[datTraits_worm$Group==3, "Total_Worms"]/mean_group2
-datTraits_worm[datTraits_worm$Group==4, "protection"] <- mean_group4
-datTraits_worm[datTraits_worm$protection<0, "protection"] = 0
-
-datTraits_worm_13 <- subset(datTraits_worm, Group==1|Group==3 )
-
-boxplot(datTraits_worm_13$protection ~ datTraits_worm_13$Group, outcol="white",
-        col=c("rosybrown1","paleturquoise1"),
-        main="Protection Level of total worm count", xlab="Treatment", ylab="Worm Count",
-        names = c("3mo","6mo"))
-# Add data points
-mylevels<-levels(as.factor(datTraits_worm_13$Group))
-levelProportions<-summary(as.factor(datTraits_worm_13$Group))/nrow(datTraits_worm_13)
-for(i in 1:length(mylevels)){
-  thislevel<-mylevels[i]
-  thisvalues<-datTraits_worm_13[datTraits_worm_13$Group==thislevel, "protection"]
-  # take the x-axis indices and add a jitter, proportional to the N in each level
-  myjitter<-jitter(rep(i, length(thisvalues)), amount=levelProportions[i]/2)
-  points(myjitter, thisvalues, pch=20, col=rgb(0,0,0,.2))
-}
-
-```
 
 ### FEC
+## AUC FEC per aging & treatment group
 ```{r}
 datTraits_AUC <-  cbind(allTraits[,c("Animal_ID","Group","Treatment")],allTraits[,grepl("AUC", names(allTraits))])
 
@@ -303,17 +273,17 @@ for(i in 1:4) {
   group_sd[i,] <- apply(filter_group,2,sd)
 }
 plot_colors <- c("red","indianred2","blue","royalblue1")
-pdf("~/Dropbox/BBSRC-ARC/figs/AUC Faecal Egg Count Time Series.pdf", width=8, height = 6)
 matplot(t(group_matrix),
         col=plot_colors, type="o", xaxt = "n", ylab = "FEC", xlab="Days post 1st vaccination",
         lwd=3, lty=c(1,2,1,2), main="AUC Faecal Egg Count Time Series (Mean)")
 axis(1, at=1:length(colnames(datTraits_AUC)[-c(1:3)]), labels=colnames(datTraits_AUC)[-c(1:3)])
 legend(1, 10000, legend=c("1: 3M_Vax", "2: 3M_Ctrl", "3: 6M_Vax", "4: 6M_Ctrl"),
        col=plot_colors, lty=c(1,2,1,2), cex=0.8)
-dev.off()
 
 ```
 
+
+# Cumulative FEC boxplot per group
 ```{r}
 cols <- c("orangered3","lightpink2","royalblue3","skyblue1")
 datTraits_AUC$Group <- as.factor(datTraits_AUC$Group)
@@ -322,181 +292,17 @@ ggplot(datTraits_AUC, aes(x=Group,y=AUCDay95) )+
   geom_jitter(aes(color=Group),size=3,alpha=.4)+
   scale_fill_manual(values=cols)+
   scale_color_manual(values=cols)+
+  #scale_y_continuous(breaks=seq(0,1,.1), labels=scales::percent)+
   guides(fill=FALSE,color=FALSE)+
   labs(x="\nLamb group",y="Cumulative FEC\n")+
   scale_x_discrete(breaks=c("1","2","3","4"),labels=c("3mo_Vax", "3mo_Ctrl", "6mo_Vax", "6mo_Ctrl"))+
   z_theme()
-ggsave("paper_figs/auc_boxplot.pdf", height=6, width=10)
 ```
 
-```{r}
-## Protection level
-datTraits_AUC$protection <- 0
-mean_group2 <- mean(datTraits_AUC[datTraits_AUC$Group==2, "AUCDay95"])
-mean_group4 <- mean(datTraits_AUC[datTraits_AUC$Group==4, "AUCDay95"])
-datTraits_AUC[datTraits_AUC$Group==1, "protection"] <- 1- datTraits_AUC[datTraits_AUC$Group==1, "AUCDay95"]/mean_group2
-datTraits_AUC[datTraits_AUC$Group==2, "protection"] <- mean_group2
-datTraits_AUC[datTraits_AUC$Group==3, "protection"] <- 1- datTraits_AUC[datTraits_AUC$Group==3, "AUCDay95"]/mean_group2
-datTraits_AUC[datTraits_AUC$Group==4, "protection"] <- mean_group4
-datTraits_AUC[datTraits_AUC$protection<0, "protection"] = 0
-
-datTraits_AUC_13 <- subset(datTraits_AUC, Group==1|Group==3 )
-pdf("~/Dropbox/BBSRC-ARC/figs/AUC Faecal Egg Count protection level.pdf", width=8, height = 6)
-boxplot(datTraits_AUC_13$protection ~ datTraits_AUC_13$Group, outcol="white",
-        col=c("rosybrown1","paleturquoise1"),
-        main="FEC Protection Level", xlab="Treatment", ylab="AUC",
-        names = c("3mo","6mo"))
-# Add data points
-mylevels<-levels(as.factor(datTraits_AUC_13$Group))
-levelProportions<-summary(as.factor(datTraits_AUC_13$Group))/nrow(datTraits_AUC_13)
-for(i in 1:length(mylevels)){
-  thislevel<-mylevels[i]
-  thisvalues<-datTraits_AUC_13[datTraits_AUC_13$Group==thislevel, "protection"]
-  # take the x-axis indices and add a jitter, proportional to the N in each level
-  myjitter<-jitter(rep(i, length(thisvalues)), amount=levelProportions[i]/2)
-  points(myjitter, thisvalues, pch=20, col=rgb(0,0,0,.2))
-}
-
-dev.off()
-
-write.csv(datTraits_AUC_13, file="data/res/datTraits_AUC_13.csv", col.names = T)
-write.csv(datTraits_AUC, file="data/res/datTraits_AUC.csv", col.names = T)
-
-
-```
-
-
-```{r, IgA mucosal wash}
-table_iga <- read.xlsx("~/Dropbox/sheep_arc/data/read_in/Complete data set Tcirc AHRC 21_02_2018 iga.xlsx","iga", colIndex = c(2,5:9))
-table_iga_bio <- table_iga[grep("Biopsy",table_iga$Treatment),]
-colnames(table_iga_bio)[3:6] <- c("Day 0", "Day 21", "Day 42", "Day 56")
-
-##### median and individual sheep plot #####
-long_iga <- melt(table_iga_bio[,-2], id="Group")
-colnames(long_iga) <- c("Group", "Day", "Iga")
-long_iga$Group <- as.factor(long_iga$Group)
-long_iga$Day <- as.factor(long_iga$Day)
-long_iga$Median <- 0
-long_iga$Sd <- 0
-long_iga$Sem <- 0
-
-for(iga_i in levels(long_iga$Group)) {
-  for(iga_j in levels(long_iga$Day)) {
-    long_iga[long_iga$Group==iga_i & long_iga$Day==iga_j, ]$Median <- median(subset(long_iga, Group==iga_i & Day == iga_j)$Iga)
-    long_iga[long_iga$Group==iga_i & long_iga$Day==iga_j, ]$Sd <- sd(subset(long_iga, Group==iga_i & Day == iga_j)$Iga)
-    long_iga[long_iga$Group==iga_i & long_iga$Day==iga_j, ]$Sem <- sd(subset(long_iga, Group==iga_i & Day == iga_j)$Iga)/sqrt(length(subset(long_iga, Group==iga_i & Day == iga_j)$Iga))
-  }
-}
-
-
-p <- ggplot(long_iga, aes(x = Day, y = Iga))+
-      geom_line(aes(x = Day, y = Median, color = Group, group=Group), size=1)+
-      #geom_point(aes(color = Group), size=1) +
-      geom_errorbar(aes(ymin=Median-Sem, ymax=Median+Sem, color = Group), width=.2,
-                 position=position_dodge(0.05), size=0.2 )+
-      theme(legend.position = "top")+
-      scale_color_manual(values = c("orangered3","lightpink1","royalblue3","skyblue1"))+
-      ylab("Averaged Log2 Gene Expression")+
-      theme_bw()
-
-short_iga <- unique(long_iga[,-3])
-col = c("royalblue3","skyblue1")
-col=  c("orangered3","lightpink1")
-p <- ggplot(subset(short_iga, Group==1|Group==2), aes(x = Day, y = Median))+
-      geom_line(aes(x = Day, y = Median, color = Group, group=Group, linetype=Group), size=1)+
-      geom_point(aes(color = Group, shape=Group), size=3 ) +
-      scale_shape_manual(values=c(16,1))+
-      geom_errorbar(aes(ymin=Median-Sem, ymax=Median+Sem, color = Group), width=.2,
-                 position=position_dodge(0.05), size=0.2 )+
-      theme(legend.position = "top")+
-      scale_color_manual(values = col  )+ #
-      ylab("L4-ES IgA Mucosal wash")+
-      ylim(0,1.1)+
-      theme_bw()
-ggsave(p, file="~/Dropbox/sheep_arc/paper_figs/iga_3mo.png", height = 5, width = 6)
-
-```
-
-```{r, glm }
-
-datTraits_worm$age <- as.numeric(datTraits_worm$Group==1|datTraits_worm$Group==2)
-
-GROUP <- as.character(datTraits_worm$Group)
-TOTAL <- datTraits_worm$Total_Worms
-AGE <- as.character(datTraits_worm$age)
-glm_test <- glm( TOTAL ~ GROUP+AGE, family = poisson)
-summary(glm_test)
-
-
-g1_worm <- subset(datTraits_worm, datTraits_worm$Group==1)$Total.Worm
-g2_worm <- subset(datTraits_worm, datTraits_worm$Group==2)$Total.Worm
-g3_worm <- subset(datTraits_worm, datTraits_worm$Group==3)$Total.Worm
-g4_worm <- subset(datTraits_worm, datTraits_worm$Group==4)$Total.Worm
-
-
-t.test(g1_worm, g2_worm)
-#wilcox.test(g1_worm,g3_worm)
-
-
-```
-
-
-
-```{r}
-  t_col <- function(color, percent = 30, name = NULL) {
-## Get RGB values for named color
-  rgb.val <- col2rgb(color)
-## Make new color using input color as base and alpha set by transparency
-  t.col <- rgb(rgb.val[1], rgb.val[2], rgb.val[3],
-               max = 255,
-               alpha = (100-percent)*255/100,
-               names = name)
-## Save the color
-  invisible(t.col)
- }
-
-```
-
-```{r}
-
-fec_worm <- as.data.frame(cbind(allTraits$Group, allTraits$AUCDay95, allTraits$Total_Worms))
-colnames(fec_worm) <- c("Treatment", "FEC", "Worm_count")
-fec_worm$Treatment <- as.factor(fec_worm$Treatment)
-levels(fec_worm$Treatment)[levels(fec_worm$Treatment)=="1"] <- "3Mo_vax"
-levels(fec_worm$Treatment)[levels(fec_worm$Treatment)=="2"] <- "3Mo_ctrl"
-levels(fec_worm$Treatment)[levels(fec_worm$Treatment)=="3"] <- "6Mo_vax"
-levels(fec_worm$Treatment)[levels(fec_worm$Treatment)=="4"] <- "6Mo_ctrl"
-
-cols <- c("orangered3","lightpink2","royalblue3","skyblue1")
-ggplot(fec_worm, aes(x=FEC,y=Worm_count, color=Treatment, shape=Treatment))+
-  geom_point(size=4)+
-  scale_shape_manual(values=c(16,10,16,10))+
-  scale_color_manual(values=cols)+
-  geom_rug()+ labs(y="Total Worm Count \n",x="\n Accumulated Faecal Egg Count")+
-  theme(legend.text = element_text(size = 16, face = "bold"))+
-  z_theme()
- ggsave("paper_figs/fec_worm_scatter.png", height=6, width=10)
-
- fec_worm_list <- split(fec_worm, f=fec_worm$Treatment)
- cols <- c("orangered3","lightpink","royalblue3","skyblue")
- cor_coef <- vector()
- cols_new<- vector()
- for (i in 1:4) {
-    cor_coef[i] <- cor(fec_worm_list[[i]]$FEC, fec_worm_list[[i]]$Worm_count)
-    cols_new[i] <- t_col(cols[i])
- }
-names(cor_coef) <- c("3mo_vax", "3mo_ctrl", "6mo_vax", "6mo_ctrl")
-png("paper_figs/fec_worm_bar.png", height = 600, width=1000)
-barplot(cor_coef, xlab = "Treatment", ylab="Correlation Coefficient",
-        main="", col=cols_new,cex.axis=1.5, cex.names=2, cex.lab=2)
-dev.off()
-
-
-```
-
+## Biopsy samples Analysis: dynamic pairwise comparison
 ### maSigPro
 ```{r, maSigPro}
-load("data/res/DESeq2_norm.RData")
+load("~/Dropbox/sheep_arc/data/res/DESeq2_norm.RData")
 dim(DESeq2_norm)
 # sample table for maSigPro
 group_num <- c("Group1", "Group2", "Group3", "Group4")
@@ -527,29 +333,28 @@ X_sub <- round(DESeq2_norm[,match(rownames(maSig_sub_table), colnames(DESeq2_nor
 dim(X_sub)
 #head(X_sub)
 
-# Run maSigpro
+###Run maSigpro
 
-d <- make.design.matrix(maSig_sub_table)
-NBp <- p.vector(X_sub, d, counts=TRUE)
-NBt <- T.fit(NBp)
-save(NBp, NBt, file=paste0("masigpro/NB_",sel_group,".RData"))
-load(paste0("masigpro/NB_",sel_group,".RData"))
+# d <- make.design.matrix(maSig_sub_table)
+# NBp <- p.vector(X_sub, d, counts=TRUE)
+# NBt <- T.fit(NBp)
+# save(NBp, NBt, file=paste0("masigpro/NB_",sel_group,".RData"))
+load(paste0("~/Dropbox/sheep_arc/masigpro/NB_",sel_group,".RData"))
 get<-get.siggenes(NBt, vars="all",  rsq = 0.4)
 get$summary
 a = see.genes(get$sig.genes, k =7)
 save(get, file = paste0("masigpro/get_",sel_group,".RData"))
 gene_cluster <- as.data.frame(a$cut)
 colnames(gene_cluster) <- "cluster"
-save(gene_cluster, file=paste0("masigpro/gene_cluster_",sel_group,".RData"))
-write.table(gene_cluster, file=paste0("masigpro/gene_cluster_",sel_group,".csv"))
+#save(gene_cluster, file=paste0("masigpro/gene_cluster_",sel_group,".RData"))
+#write.table(gene_cluster, file=paste0("masigpro/gene_cluster_",sel_group,".csv"))
 
 ```
 
 
 
-
-```{r}
-
+## plot masigPro results 
+```{r, }
 mean_matrix <- matrix(0, nrow(DESeq2_norm),24)
 rownames(mean_matrix) <- rownames(DESeq2_norm)
 colnames(mean_matrix) <- colnames(mean_matrix, do.NULL = FALSE)
@@ -559,7 +364,7 @@ for (i in 1:24) {
 }
 mean_matrix <- mean_matrix[,order(colnames(mean_matrix))]
 
-load(paste0("masigpro/gene_cluster_",sel_group,".RData"))
+load(paste0("~/Dropbox/sheep_arc/masigpro/gene_cluster_",sel_group,".RData"))
 gene_cluster <- as.data.frame(cbind(rownames(gene_cluster), gene_cluster$cluster))
 colnames(gene_cluster) <- c("gene", "cluster")
 gene_list <- gene_cluster[order(gene_cluster$cluster),]
@@ -578,216 +383,32 @@ for (ind_cl in 1:7) {
 
   hmcol = colorRampPalette(brewer.pal(9, "RdBu"))(100)
   myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")), space="Lab")
-  png(filename=paste("masigpro/",sel_group,"_heatmap_scale/",ind_cl ,"_heatmap.png", sep=""))
+  png(filename=paste("~/Dropbox/sheep_arc/masigpro/",sel_group,"_heatmap_scale/",ind_cl ,"_heatmap.png", sep=""))
   heatmap.2(map_matrix,scale="none", col = myPalette, trace="none",
             cexCol=0.9,cexRow=0.5,density.info="density", breaks = seq(-2.67, 3, length.out = 200),
             Rowv=T, Colv=F)
   dev.off()
+
 }
-
-
 
 ```
-
-```{r, KEGG pathway analysis}
-gene_table <- read.csv("data/read_in/gene_table_18k.csv", sep="\t")
-
-sel_group <- "2vs4"
-load(paste0("masigpro/gene_cluster_",sel_group,".RData"))
-
-table_oas_id <-  cbind(gene_table[match(rownames(gene_cluster), gene_table[,1]),], rownames(gene_cluster), gene_cluster)
-table_oas_id <- na.omit(table_oas_id)
-print(identical( as.character(table_oas_id$id), as.character(table_oas_id$`rownames(gene_cluster)`) ))
-table_oas_id$oas <- substring(table_oas_id$oas,5)
-#table_oas_id$cluster <- paste(table_oas_id$cluster,c("Y"), sep="_")
-table_oas_id <- table_oas_id
-table_split <- split( table_oas_id , f = table_oas_id$cluster )
-
-for (i in 1:length(table_split)) {
-  write.table(table_split[[i]]$id, file= paste0("masigpro/ingenuity/",sel_group,"/",sel_group,"_",i,".csv"), sep=",", row.names = F, col.names = F, quote = F)
-}
-
-
-#
-
-
-oas_cluster <- lapply(table_split, function(x) x[,2])
-
-
-ck <- compareCluster(geneCluster = oas_cluster,
-                     fun = "enrichKEGG",
-                     organism="oas",
-                     pvalueCutoff=0.05)
-png(paste0("masigpro/KEGG_p0.05_",sel_group,".png"), width=600, height=400)
-dotplot(ck, colorBy = "p.adjust", showCategory = 20, by = "geneRatio",
-        includeAll = TRUE, font.size = 12)
-dev.off()
-
-kegg_result <- ck@compareClusterResult
-kegg_list <- strsplit(kegg_result$geneID, "/")
-geneID_mat <- as.data.frame(str_split_fixed(kegg_result$geneID, "/",max(lengths(kegg_list))))
-gene_name_mat <- NULL
-for (i in 1:max(lengths(kegg_list))) {
-  Gene_Name <- as.character(table_oas_id[match(geneID_mat[,i], table_oas_id$oas),"id"])
-  gene_name_mat <- cbind(Gene_Name,gene_name_mat)
-}
-kegg_result <- cbind(kegg_result, gene_name_mat)
-write.csv(kegg_result,file=paste0("masigpro/kegg_gene_list_",sel_group ,".csv"), row.names = F, col.names = T)
-
-```
-
-
-
-```{r, correlation with Worm and FEC}
-###  kegg #####
-sel_group <- "1vs3"
-kegg_result <- read.csv(paste0("masigpro/kegg_gene_list_",sel_group ,".csv"))
-
-# 3vs4
-kegg_result_sub <- subset(kegg_result, ID=="oas04630"|ID=="oas04060"|ID=="oas04664")
-kegg_gene_only <- kegg_result_sub[,grep("Gene_Name", colnames(kegg_result_sub))]
-kegg_gene_unique<- as.character(unique(na.omit(unlist(kegg_gene_only))))
-
-### IPA #####
-
-sel_group <- "1vs3"
-read_ipa_table <- read.xlsx2("masigpro/ingenuity/1vs3/ipa_1vs3_2.xls",1, header=T, colIndex = 1:5)
-ipa_table <- as.data.frame(read_ipa_table[-1,])
-colnames(ipa_table) <- read_ipa_table[1,]
-ipa_table$p_value <- 1/(10^as.numeric(ipa_table$` -log(p-value)`))
-ipa_table_pvalue <- subset(ipa_table, p_value <= 0.01)
-split_gene <- strsplit(ipa_table_pvalue$Molecules, ",")
-
-
-kegg_gene_unique <- split_gene[[3]]
-
-load("data/res/DESeq2_norm.RData")
-load("data/res/sample_table_w1_7.RData")
-
-
-### Loop for elastic net
-Worm <- read.csv("data/res/datTraits_worm.csv", header = T)
-Worm <- Worm[,-1]
-Worm_biopsy <- subset(Worm, Treatment == "Immunised Biopsy"|Treatment=="Control Biopsy")
-Worm_biopsy$Total_Worms[ Worm_biopsy$Total_Worms==0] <- 1
-
-
-week_w <- c("Week1","Week2","Week3","Week4","Week5","Week7")
-coeff_mat <- matrix(0, length(kegg_gene_unique),length(week_w))
-rownames(coeff_mat) <- kegg_gene_unique
-
-for (i in 1:length(week_w)) {
-  sample_table <- subset(subset_samples, week == week_w[i])
-  kegg_gene_exp<- DESeq2_norm[match(kegg_gene_unique,rownames(DESeq2_norm)),match(sample_table$sample,colnames(DESeq2_norm))]
-  colnames(kegg_gene_exp) <- paste(substring(colnames(kegg_gene_exp),6,6),colnames(kegg_gene_exp), sep="_")
-  kegg_gene_scale <- t(scale(t(kegg_gene_exp)))
-  kegg_gene_order <- kegg_gene_scale[,order(colnames(kegg_gene_scale))]
-
-  # regression with worm
-  Worm_biopsy <- Worm_biopsy[match(substring(colnames(kegg_gene_order),3,6), Worm_biopsy$Animal_ID),]
-  fit_glm <- glm(Worm_biopsy$Total_Worms~t(kegg_gene_order), family = "poisson")
-  summary(fit_glm)
-  model_coeff <- as.data.frame(summary(fit_glm)$coefficients[-1,])
-  para_df <- as.data.frame(matrix(0,length(kegg_gene_unique),1))
-  para_df$Estimate <- model_coeff$Estimate
-  para_df$gene <- substring(rownames(model_coeff),19)
-  para_df$error <- model_coeff$`Std. Error`
-
-  MtoH <-colorRampPalette(c('yellow' ,'firebrick2'))
-  LtoM <-colorRampPalette(c('blue','chartreuse'))
-  ggplot(data=para_df, aes(x= reorder(gene,-Estimate), y = Estimate, fill=Estimate))+
-    geom_bar(stat = 'identity',color="black") +
-    #geom_errorbar(aes(ymin=Estimate-error, ymax=Estimate+error),width=.2, position=position_dodge(.9))+
-    scale_fill_distiller(palette = "Spectral")+#,limits = c(0.01,0.035),oob=squish)+
-    labs(title=" GLM of Worm count and gene expression", x="Enriched KEGG Gene", y = "coeff.mean")+
-    coord_flip()+
-    theme_minimal()
-  #ggsave(paste0("masigpro/glm/glm_coeff_",sel_group,"_",week_w[i],".pdf"), width = 6, height = 4)
-  ggsave(paste0("masigpro/ingenuity/",sel_group,"/glm_coeff_",sel_group,"_",week_w[i],".png"), width = 6, height = 4)
-
-  identical(rownames(coeff_mat), para_df$gene)
-  coeff_mat[,i] <- para_df$Estimate
-}
-
-colnames(coeff_mat) <- c("W1","W2","W3","W4","W5","W7")
-ord <- hclust( dist(coeff_mat, method = "euclidean"), method = "ward.D" )$order
-rownames(coeff_mat)[ord]
-
-longData <- melt(coeff_mat)
-head(longData, 20)
-max(coeff_mat)
-min(coeff_mat)
-longData$Var1 <- factor( longData$Var1, levels = rownames(coeff_mat)[ord] )
-
-myPalette <- colorRampPalette(rev(brewer.pal(11, "RdBu")), space="Lab")
-ggplot(longData,aes(x = Var2, y = Var1, fill = value))+
-  geom_tile()+
-  #geom_text(aes(Var2, Var1, label = round(value,2)), color = "black", size = 3) +
-  scale_fill_gradientn(colours = myPalette(100),name="GLM Coeff",limits = c(-1,1),oob=squish)+
-  scale_x_discrete(expand = c(0, 0))+
-  scale_y_discrete(expand = c(0, 0))+
-  coord_equal()+
-  theme_bw()+
-  theme(text = element_text(size=14), axis.text.y = element_text(size=12),
-        axis.text.x = element_text(angle = 45, vjust = 1, size = 12, hjust = 1),
-        axis.title.y = element_blank(), axis.title.x = element_blank())+
-coord_flip()
-ggsave(paste0("masigpro/ingenuity/",sel_group,"/glm_coeff_w1_w7_",sel_group,"_.png"), width =6, height = 3)
-
-
-
-
-for (i in 1:length(week_w)) {
-  for (GENE in rownames(coeff_mat)) {
-  sample_table <- subset(subset_samples, week==week_w[i])
-  kegg_gene_exp<- DESeq2_norm[match(kegg_gene_unique,rownames(DESeq2_norm)),match(sample_table$sample,colnames(DESeq2_norm))]
-  colnames(kegg_gene_exp) <- paste(substring(colnames(kegg_gene_exp),6,6),colnames(kegg_gene_exp), sep="_")
-  kegg_gene_scale <- t(scale(t(kegg_gene_exp)))
-  kegg_gene_order <- kegg_gene_scale[,order(colnames(kegg_gene_scale))]
-
-  cor.test(kegg_gene_order[GENE,],log2(Worm_biopsy$Total_Worms) )
-
-
-  kegg_gene_order <- kegg_gene_order[,-16]
-  Worm_biopsy_new <- subset(Worm_biopsy, Total_Worms >=10)
-
-  gene_df <- as.data.frame(cbind(kegg_gene_order[GENE,], log2(Worm_biopsy_new$Total_Worms)))
-  colnames(gene_df) <- c("gene","worm")
-  ggplot(gene_df, aes(x=gene, y=worm)) +
-  geom_point()+
-  geom_smooth(method=lm)+
-  ggtitle(GENE)+
-  xlab("Scaled gene expression")+
-  ylab("Log2 Worm Counts")+
-  theme_bw()
-  ggsave(paste0("masigpro/ingenuity/",sel_group,"/gene_worm_correlation_remove1//correlation_",week_w[i],"_",GENE,"_",sel_group,".png"), height = 6, width = 6)
-
-  }
-}
-
-
-
-```
-
-
-
 
 
 ```{r, bar plot of masigpro DE gene numbers}
 source("ztheme.R")
-ma_gene_cluster <- read.csv("masigpro/gene_cluster_1vs2.csv", sep=" ")
+ma_gene_cluster <- read.csv("~/Dropbox/sheep_arc/masigpro/gene_cluster_1vs2.csv", sep=" ")
 df <- as.data.frame(cbind(rownames(ma_gene_cluster), ma_gene_cluster$cluster,"3V vs 3C"))
-ma_gene_cluster <- read.csv("masigpro/gene_cluster_1vs3.csv", sep=" ")
+ma_gene_cluster <- read.csv("~/Dropbox/sheep_arc/masigpro/gene_cluster_1vs3.csv", sep=" ")
 df <- as.data.frame(rbind(df, cbind(rownames(ma_gene_cluster), ma_gene_cluster$cluster, "3V vs 6V")))
-ma_gene_cluster <- read.csv("masigpro/gene_cluster_3vs4.csv", sep=" ")
+ma_gene_cluster <- read.csv("~/Dropbox/sheep_arc/masigpro/gene_cluster_3vs4.csv", sep=" ")
 df <- as.data.frame(rbind(df, cbind(rownames(ma_gene_cluster), ma_gene_cluster$cluster,"6V vs 6C")))
-ma_gene_cluster <- read.csv("masigpro/gene_cluster_2vs4.csv", sep=" ")
+ma_gene_cluster <- read.csv("~/Dropbox/sheep_arc/masigpro/gene_cluster_2vs4.csv", sep=" ")
 df <- as.data.frame(rbind(df, cbind(rownames(ma_gene_cluster), ma_gene_cluster$cluster,"3C vs 6C")))
 colnames(df) <- c("Gene", "Cluster", "Group")
 df$Group <- factor(df$Group, levels=c("3C vs 6C", "3V vs 3C", "6V vs 6C","3V vs 6V" ))
  nrow(subset(df, Group=="3V  vs  6V"))
 
-p=ggplot(df, aes(Cluster, fill = Cluster))+
+ggplot(df, aes(Cluster, fill = Cluster))+
     theme_bw()+
     labs(y = "The number of DE Genes in each cluster", x = "Cluster")+
     geom_bar()+
@@ -797,32 +418,27 @@ p=ggplot(df, aes(Cluster, fill = Cluster))+
     theme(strip.text.y = element_text(size = 12, face="bold"))+
     theme(axis.title.x=element_text(size=12, vjust=0, face="bold")) +
     theme(axis.title.y=element_text(size=12, vjust=1.25, face="bold"))
-ggsave(p, file="~/Dropbox/sheep_arc/paper_figs/distribution_genes.pdf", height = 4, width = 8)
 
 ```
 
 
 
-
-
+## Venn Diagram of 4 groups
 ```{r}
-
 library("VennDiagram")
 library("gplots")
-  G_1vs2 <- subset(df, Group=="3V  vs  3C")$Gene
-  G_1vs3 <- subset(df, Group=="3V  vs  6V")$Gene
-  G_2vs4 <- subset(df, Group=="3C  vs  6C")$Gene
-  G_3vs4 <- subset(df, Group=="6V  vs  6C")$Gene
-  png("masigpro/venn.png", height = 800, width = 800)
+  G_1vs2 <- subset(df, Group=="3V vs 3C")$Gene
+  G_1vs3 <- subset(df, Group=="3V vs 6V")$Gene
+  G_2vs4 <- subset(df, Group=="3C vs 6C")$Gene
+  G_3vs4 <- subset(df, Group=="6V vs 6C")$Gene
   venn(list(GrpA=G_2vs4,GrpB=G_1vs2, GrpC=G_3vs4, GrpD=G_1vs3))
-  dev.off()
 
 
 ```
 
 
 ```{r, match ipa immune database}
-imm_list <- read.xlsx("data/read_in/immune_pathway_list.xls",1, header=T)
+imm_list <- read.xlsx("~/Dropbox/sheep_arc/data/read_in/immune_pathway_list.xls",1, header=T)
 imm_list <- imm_list[,2:4]
 colnames(imm_list) <- imm_list[1,]
 imm_list <- unique(imm_list[-1,])
@@ -830,7 +446,7 @@ imm_list <- unique(imm_list[-1,])
 pathway_heatmap <- NULL
 file_list <- c("2vs4_3","1vs2_3","3vs4_2","1vs3_2")
 for (i_file in file_list) {
-pathway_week <- read.xlsx(paste0("masigpro/ingenuity/pathway_heatmap_v2/ipa_",i_file,".xls"),1)
+pathway_week <- read.xlsx(paste0("~/Dropbox/sheep_arc/masigpro/ingenuity/pathway_heatmap_v2/ipa_",i_file,".xls"),1)
 pathway_week <- pathway_week[-1, c(1,2,5)]
 colnames(pathway_week) <- c("pathway", "log_p", "gene")
 pathway_index <- na.omit(match(imm_list$Name,pathway_week$pathway))
@@ -841,7 +457,7 @@ pathway_heatmap <- rbind(pathway_heatmap, pathway_group)
 ```
 
 
-
+# Pathway heatmap with log_p 
 ```{r, pathway heatmap}
 read_ipa_table <- subset(pathway_heatmap, log_p >= 1.3)[,-3]
 read_ipa_table$log_p <- as.numeric(read_ipa_table$log_p)
@@ -868,14 +484,10 @@ min(longData$log_p)
 
 longData$pathway<- factor( longData$pathway, levels = ipa_table_comb$pathway[ord] )
 longData$group <- factor(longData$group, levels=c("2vs4","1vs2","3vs4","1vs3"))
-
 myPalette <- colorRampPalette(brewer.pal(9, "YlGnBu"), space="Lab")
-
-
 require(grid) # for unit()
 p=ggplot(longData,aes(x = group, y = pathway, fill = log_p))+
   geom_tile(colour = "white", size=0.5)+
-
   scale_fill_gradientn(colours = myPalette(100),name=expression("-log"[10]*"(P-value)"),limits = c(min(longData$log_p),max(longData$log_p)),oob=squish, na.value = 'salmon')+
   coord_equal()+
   theme(legend.position="right")+

@@ -23,12 +23,11 @@ library("DESeq2")
 
 # elastic net
 library("glmnet")
-library("covTest")
-
+library("clusterProfiler")
 # heatmap
 library("ComplexHeatmap")
 library("RColorBrewer")
-
+library("ggplot2")
 options(stringsAsFactors = FALSE)
 
 ```
@@ -37,8 +36,8 @@ options(stringsAsFactors = FALSE)
 
 ### Treatment sample table
 ```{r}
-load("data/res/DESeq2_norm.RData")
-load("data/res/sample_table_w1_7.RData")
+load("~/Dropbox/sheep_arc/data/res/DESeq2_norm.RData")
+load("~/Dropbox/sheep_arc/data/res/sample_table_w1_7.RData")
 week_w <- "Week2"
 sample_table <- subset(subset_samples, (group=="Group1"|group=="Group3")& week==week_w)
 DESeq2_norm_1vs3 <- DESeq2_norm[,match(sample_table$sample,colnames(DESeq2_norm))]
@@ -64,7 +63,7 @@ DESeq2_norm_1vs3 <- DESeq2_norm[,match(sample_table$sample,colnames(DESeq2_norm)
   powers = c(c(1:10), seq(from = 12, to=40, by=2))
   sft = pickSoftThreshold(input_matrix, powerVector = powers, verbose = 5)
 
-  pdf(paste0("WGCNA_control/soft_threshold_g1g3_",week_w,".pdf"), width =9, height = 5)
+  pdf(paste0("~/Dropbox/sheep_arc/WGCNA_control/soft_threshold_g1g3_",week_w,".pdf"), width =9, height = 5)
   #sizeGrWindow(9, 5)
   par(mfrow = c(1,2))
   cex1 = 0.85
@@ -99,25 +98,23 @@ write.csv(output_matrix, file=paste0("./WGCNA_res/DESeq_norm_genematrix_g1g3_",w
 ```{r, elastic net with worm burdens and FEC}
 week_w <- "Week4"
 # READ Gene and Eigen TABLES
-DESeq2_gene_matrix <- read.csv(paste0("WGCNA/DESeq_norm_genematrix_g1g3_",week_w,".csv"), header = T)
+DESeq2_gene_matrix <- read.csv(paste0("~/Dropbox/sheep_arc/WGCNA/DESeq_norm_genematrix_g1g3_",week_w,".csv"), header = T)
 rownames(DESeq2_gene_matrix) <- DESeq2_gene_matrix[,1]
 DESeq2_gene_matrix <- DESeq2_gene_matrix[,-1]
 
-eigen <- read.csv(paste0("WGCNA/eigengenes_clusters_g1g3_",week_w,".csv"), header = T)
+eigen <- read.csv(paste0("~/Dropbox/sheep_arc/WGCNA/eigengenes_clusters_g1g3_",week_w,".csv"), header = T)
 rownames(eigen) <- eigen[,1]
 eigen <- eigen[,-1]
 eigen <- subset(eigen, select=-c(MEgrey))
 
 # Worm and FEC
 
-Worm_biopsy$Total.Worms[ Worm_biopsy$Total.Worms==0] <- 1
-
- Worm <- read.csv("data/res/datTraits_worm_13.csv", header = T)
+ Worm <- read.csv("~/Dropbox/sheep_arc/data/res/datTraits_worm_13.csv", header = T)
  Worm <- Worm[,-1]
  Worm_biopsy <- subset(Worm, Treatment == "Immunised Biopsy")
  Worm_biopsy$Total.Worms[ Worm_biopsy$Total.Worms==0] <- 1
 
- FEC <- read.csv("data/res/datTraits_AUC_13.csv", header = T)
+ FEC <- read.csv("~/Dropbox/sheep_arc/data/res/datTraits_AUC_13.csv", header = T)
  FEC <- FEC[,-1]
  FEC_biopsy <- subset(FEC, Treatment == "Immunised Biopsy")
 
@@ -151,14 +148,14 @@ ggplot(data=para_df_sub, aes(x= reorder(gene,-Estimate), y = Estimate, fill=Esti
   labs(title="WGCNA clusters ranked by elastic net: Worm Count ~ Clusters ", x="Gene Clusters", y = "coeff.mean")+
   coord_flip()+
   theme_minimal()
-ggsave(paste0("WGCNA/elasticnet_coeff_nonzero_",week_w,".pdf"), width = 10, height = 10)
+#ggsave(paste0("WGCNA/elasticnet_coeff_nonzero_",week_w,".pdf"), width = 10, height = 10)
 
 ```
 
 ```{r, KEGG enrichment}
 corre <- "down"
 
-gene_table <- read.csv("data/read_in/gene_table_18k.csv", sep="\t")
+gene_table <- read.csv("~/Dropbox/sheep_arc/data/read_in/gene_table_18k.csv", sep="\t")
 colnames(gene_table) <- c("id", "oas")
 gene_id <- match(DESeq2_gene_matrix$clusters,substring(para_df_sub$gene,3))
 match_table <- as.data.frame(na.omit(DESeq2_gene_matrix[which(!is.na(gene_id)),]))
@@ -214,10 +211,29 @@ write.csv(kegg_result,file=paste0("WGCNA/genelist_KEGG_g1g3_",week_w,"_",corre,"
 week_w = "Week2"
 corre = "down"
 
-kegg_result <- read.csv(paste0("WGCNA/genelist_KEGG_g1g3_",week_w,"_",corre,".csv"))
+kegg_result <- read.csv(paste0("~/Dropbox/sheep_arc/WGCNA/genelist_KEGG_g1g3_",week_w,"_",corre,".csv"))
+
+#WEEK1
+#kegg_result_sub <- subset(kegg_result, Cluster=="black"|Cluster=="coral2"|Cluster=="darkred"|Cluster=="greenyellow") # UP
 
 #WEEK2
 kegg_result_sub <- subset(kegg_result, Cluster=="blueviolet") # DOWN
+
+#WEEK3
+#kegg_result_sub <- subset(kegg_result, Cluster=="brown"|Cluster=="lemonchiffon3"|Cluster=="lightgoldenrod"|Cluster=="yellow")
+
+#WEEK4
+#kegg_result_sub <- subset(kegg_result, Cluster=="blueviolet") # down
+#kegg_result_sub <- subset(kegg_result, Cluster=="lightblue1"|Cluster=="saddlebrown") # UP
+
+#WEEK5
+#kegg_result_sub <- subset(kegg_result, Cluster=="deepskyblue"|Cluster=="peru") # down
+#kegg_result_sub <- subset(kegg_result, Cluster=="darkorange"|Cluster=="lightgreen"|Cluster=="magenta2"|Cluster=="lightsteelblue1"|Cluster=="skyblue") # UP
+
+#WEEK7
+#kegg_result_sub <- subset(kegg_result, Cluster=="lightyellow") # down
+#kegg_result_sub <- subset(kegg_result, Cluster=="mediumpurple3"|Cluster=="black"|Cluster=="honeydew1"|Cluster=="yellowgreen") # UP
+
 
 
 kegg_gene_only <- kegg_result_sub[,grep("Gene_Name", colnames(kegg_result_sub))]
@@ -264,7 +280,7 @@ for (i in 1:4 ) {
   top_gene <- c(top_g,top_gene)
 }
 top_gene <- unique(top_gene)
-
+#para_mat <- para_mat[top_gene,]
 
 colnames(para_mat) <- c("G1", "G2", "G3", "G4")
 longData <- melt(para_mat)
@@ -274,7 +290,6 @@ max(para_mat)
 myPalette <- colorRampPalette(rev(brewer.pal(11, "Spectral")), space="Lab")
 ggplot(longData,aes(x = Var2, y = Var1, fill = value))+
   geom_tile()+
-  #geom_text(aes(Var2, Var1, label = round(value,2)), color = "black", size = 3) +
   scale_fill_gradientn(colours = myPalette(100),name="GLM Coeff",limits = c(min(para_mat),max(para_mat)),oob=squish)+
   scale_x_discrete(expand = c(0, 0))+
   scale_y_discrete(expand = c(0, 0))+

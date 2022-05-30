@@ -20,7 +20,8 @@ Wei Liu<sup>1,†</sup>, Tom N. McNeilly<sup>2,†,*</sup>, Mairi Mitchell<sup>2
   - [gene_cluster_masigpro.ods](#gene_cluster_masigproods)
 - [Raw transcriptomes](#raw-transcriptomes)
   - [Sequencing parameters](#sequencing-parameters)
-  - [File & sample list](#file--sample-list)
+- [Code](#code)
+- [Data used for the analysis](#data-used-for-the-analysis)
 
 ## Supplementary data
 
@@ -48,11 +49,20 @@ Transcriptomes are available at the Sequence Read Archive (SRA) [BioProject ID: 
 - Suspension buffer used: RNAse free water
 - read depth: 20M reads, paired-ends (named R1 and R2 in sequence files)
 
-### File & sample list
+## Code
+
+1. [RNAseq and parasitology](Code/1_RNAseq%20and%20parasitology.Rmd): preparation of RNAseq data for analysis
+2. [WGCNA](Code/2_WGCNA.Rmd): clustering of transcript counts using Weighted Gene Network Analysis
+3. [ElasticNet](Code/3_ElasticNet_wc.py): supervised machine learning of WGCNA correlates of worm burdens
+4. [WGCNA_python_elasticnet_pathway](Code/4_WGCNA_python_elasticnet_pathway.Rmd): analysis of immune pathways extracted from WGCNA correlates of parasite burdens
+
+## [Data used for the analysis](Code/data/)
 
 Each filename follows the scheme:
 
 `[sheepID][group][sampling week]_[sample run].fastq.gz`
+
+File & sample list:
 
 | Sample ID | Age, Vaccine, Timepoint |
 |:----------|:------------------------|

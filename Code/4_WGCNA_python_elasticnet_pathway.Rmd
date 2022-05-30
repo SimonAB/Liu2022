@@ -51,13 +51,13 @@ library("broom")
 
 para_opt <- "FEC"  # FEC   SUP    NOSUP
 week_w <- "Week7"
-gene_cluster <- read.csv(paste0("WGCNA_DESEQ/DESeq_norm_genematrix_g1g3_",week_w,".csv"), header = T)
+gene_cluster <- read.csv(paste0("~/Dropbox/sheep_arc/WGCNA_DESEQ/DESeq_norm_genematrix_g1g3_",week_w,".csv"), header = T)
 
 ```
 
 
 ```{r}
-elas_net_full <- as.data.frame(read.csv(paste0("WGCNA_",para_opt,"/enet_coef_",para_opt,"_",week_w,".csv")))
+elas_net_full <- as.data.frame(read.csv(paste0("~/Dropbox/sheep_arc/WGCNA_",para_opt,"/enet_coef_",para_opt,"_",week_w,".csv")))
 elas_net_r2 <- subset(elas_net_full, cluster!="r2"& cluster!="mse")
 ```
 
@@ -276,6 +276,7 @@ ggplot(longData, aes(x=pathway, y=var2, fill=log_p) )+
     theme_void()+
     theme(legend.position = "top")
 dev.off()
+#ggsave(p, file="~/Dropbox/sheep_arc/manuscript/pdf_figures/wei_pdf_figs//cicular_plot.pdf", height = 8, width =8)
 
 ```
 
@@ -624,8 +625,10 @@ pvalue_mat_imm_worm <- pvalue_mat_imm
        cor_worm <- cor_mat_imm_worm[,c("D0_Vax", "D0_Ctrl","D7_Vax","D7_Ctrl","D21_Vax","D21_Ctrl")]
       pvalue_worm_day0 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D0_Vax"])[1:10],]
       pvalue_worm_day7 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D7_Vax"])[1:10],]
+     #pvalue_worm_day14 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D14_Vax"])[1:10],]
       pvalue_worm_day21 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D21_Vax"])[1:10],]
-
+     # pvalue_worm_day28 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D28_Vax"])[1:10],]
+     # pvalue_worm_day42 <- pvalue_mat_imm_worm[order(pvalue_mat_imm_worm[,"D42_Vax"])[1:10],]
 
       pvalue_worm_select <- unique(rbind(pvalue_worm_day0, pvalue_worm_day7, pvalue_worm_day21))
       cor_worm_vax <- cor_mat_imm_worm[rownames(pvalue_worm_select),c("D0_Vax", "D7_Vax","D21_Vax")]
@@ -654,7 +657,6 @@ pvalue_mat_imm_worm <- pvalue_mat_imm
 
       ht_vax <- Heatmap(cor_worm_vax,  name = "", cluster_columns =F, cluster_rows = T, split= split,
                 col = colorRamp2(c(min(cor_worm_vax, cor_worm_ctrl), 0, max(cor_worm_vax, cor_worm_ctrl)),
-                 #col = colorRamp2(c(-50, 0, 50),
                  c("firebrick2", "white", "deepskyblue2")), row_names_max_width = unit(18,"cm"),
                          show_column_names = T,
                          show_row_names = F,
