@@ -1,6 +1,6 @@
 # Vaccine-induced time- and age-dependent mucosal immunity to gastrointestinal parasite infection <!-- omit in toc -->
 
-[![DOI](https://img.shields.io/badge/DOI-10.1038%2Fs41541--022--00501--0-blue)](https://dx.doi.org/10.1038/s41541-022-00501-0) 
+[![DOI](https://img.shields.io/badge/DOI-10.1038%2Fs41541--022--00501--0-blue)](https://doi.org/10.1038/s41541-022-00501-0) 
 <!-- from https://shields.io -->
 
 Wei Liu<sup>1,†</sup>, Tom N. McNeilly<sup>2,†,*</sup>, Mairi Mitchell<sup>2</sup>, Stew T.G. Burgess<sup>2</sup>, Alasdair J. Nisbet<sup>2</sup>, Jacqueline B. Matthews<sup>2,3</sup>, and Simon A. Babayan<sup>1,\*</sup>
